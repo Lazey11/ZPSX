@@ -1,5 +1,5 @@
 const std = @import("std");
-const debugPrint = std.debug.print;
+const Bus = @import("Memory.zig");
 
 pub const PrimaryOpcodes = enum(u6) {
     SPECIAL = 0x00,
@@ -123,8 +123,42 @@ pub const Cpu = struct {
     hi: u32 = 0,
     lo: u32 = 0,
 
-    pc: u32 = 0,
-    pc_next: u32 = 4,
-};
+    pc: u32 = 0xbfc0_0000,
+    pc_next: u32 = 0xbfc0_0004,
 
-pub fn execute() void {}
+    bus: *Bus.Bus,
+    pub fn init(bus: *Bus.Bus) @This() {
+        return .{
+            .bus = bus,
+        };
+    }
+    pub fn step(self: *@This()) void {
+        const current_pc = self.pc;
+        const raw = self.bus.read32(current_pc);
+        const instr = Instruction{ .raw = raw };
+
+        std.debug.print("PC=0x{X:0>8} RAW=0x{X:0>8}\n", .{ current_pc, raw });
+
+        self.pc = self.pc_next;
+        self.pc_next +%= 4;
+        self.execute(instr);
+        self.regs[0] = 0;
+    }
+    pub fn execute(self: *@This(), instr: Instruction) void {
+        switch (instr.op()) {
+            @intFromEnum(PrimaryOpcodes.LUI) => self.opLui(instr),
+
+            else => std.debug.panic("Unhandled opcode 0x{X} instruction 0x{X:0>8}\n", .{
+                instr.op(),
+                instr.raw,
+            }),
+        }
+    }
+    pub fn opLui(self: *@This(), instr: Instruction) void {
+        const rt: usize = @intCast(instr.rt());
+        self.regs[rt] = @as(u32, instr.imm()) << 16;
+    }
+    pub fn deinit(self: *@This()) void {
+        _ = self;
+    }
+};

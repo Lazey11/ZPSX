@@ -6,8 +6,13 @@ pub fn getInput(init: std.process.Init) !void {
 
     for (args) |arg| {
         if (std.mem.eql(u8, arg, "--debug")) {
-            debugPrint("Debug Works!", .{});
+            debugPrint("Debug Works!\n", .{});
             return;
         }
     }
 }
+
+pub const BIOSError = error{
+    InvalidBiosSize,
+    FileReadError,
+};
