@@ -1,10 +1,10 @@
 const std = @import("std");
 const BIOS = @import("bios.zig");
 pub const MEMORY_MASK_REGION = [_]u32{
-    0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, //
-    0x7fffffff, //
-    0x1fffffff, //
-    0xffffffff, 0xffffffff, //
+    0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, //KUSEG
+    0x7fffffff, //KUSEG0
+    0x1fffffff, //KUSEG1
+    0xffffffff, 0xffffffff, //KUSEG2
 };
 
 pub fn maskRegion(address: u32) u32 {

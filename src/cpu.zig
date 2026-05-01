@@ -1,6 +1,6 @@
 const std = @import("std");
 const Bus = @import("Memory.zig");
-
+const debug_f = @import("debug.zig");
 pub const PrimaryOpcodes = enum(u6) {
     SPECIAL = 0x00,
     REGIMM = 0x01,
@@ -132,13 +132,12 @@ pub const Cpu = struct {
             .bus = bus,
         };
     }
-    pub fn step(self: *@This()) void {
-        const current_pc = self.pc;
-        const raw = self.bus.read32(current_pc);
+    pub fn step(self: *@This(), debug_enabled: bool) void {
+        const raw = self.bus.read32(self.pc);
         const instr = Instruction{ .raw = raw };
-
-        std.debug.print("PC=0x{X:0>8} RAW=0x{X:0>8}\n", .{ current_pc, raw });
-
+        if (debug_enabled) {
+            debug_f.instructionTrace(self, instr);
+        }
         self.pc = self.pc_next;
         self.pc_next +%= 4;
         self.execute(instr);
@@ -146,18 +145,47 @@ pub const Cpu = struct {
     }
     pub fn execute(self: *@This(), instr: Instruction) void {
         switch (instr.op()) {
+            @intFromEnum(PrimaryOpcodes.SPECIAL) => self.executeSpecial(instr),
             @intFromEnum(PrimaryOpcodes.LUI) => self.opLui(instr),
-
-            else => std.debug.panic("Unhandled opcode 0x{X} instruction 0x{X:0>8}\n", .{
-                instr.op(),
-                instr.raw,
-            }),
+            @intFromEnum(PrimaryOpcodes.ORI) => self.opOri(instr),
+            else => debug_f.unhandledPrimary(instr),
+        }
+    }
+    pub fn executeSpecial(self: *@This(), instr: Instruction) void {
+        const funct = std.enums.fromInt(SpecialOpcodes, instr.funct()) orelse {
+            debug_f.unknownSpecial(instr);
+        };
+        switch (funct) {
+            .OR => self.opOr(instr),
+            .SLL => self.opSll(instr),
+            else => debug_f.unhandledSpecial(funct, instr),
         }
     }
     pub fn opLui(self: *@This(), instr: Instruction) void {
         const rt: usize = @intCast(instr.rt());
         self.regs[rt] = @as(u32, instr.imm()) << 16;
     }
+    pub fn opOri(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+
+        self.regs[rt] = self.regs[rs] | @as(u32, instr.imm());
+    }
+    pub fn opOr(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+        const rd: usize = @intCast(instr.rd());
+
+        self.regs[rd] = self.regs[rs] | self.regs[rt];
+    }
+
+    pub fn opSll(self: *@This(), instr: Instruction) void {
+        const rt: usize = @intCast(instr.rt());
+        const rd: usize = @intCast(instr.rd());
+
+        self.regs[rd] = self.regs[rt] << instr.shamt();
+    }
+
     pub fn deinit(self: *@This()) void {
         _ = self;
     }
