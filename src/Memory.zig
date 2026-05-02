@@ -71,6 +71,9 @@ pub const Bus = struct {
             }
             std.debug.panic("BIOS read but no BIOS loaded\n", .{});
         }
+        if (physical >= Expansion1.Start and physical <= Expansion1.End) {
+            return 0xFF;
+        }
 
         std.debug.panic("Unhandled read8 at 0x{X:0>8}", .{address});
     }
@@ -99,7 +102,13 @@ pub const Bus = struct {
         }
 
         if (physical >= BIOS.Bios.Start and physical <= BIOS.Bios.End) {
-            std.debug.panic("Attempted write8 to BIOS ROM at 0x{X:0>8}", .{address});
+            std.debug.panic("Attempted write8 to BIOS ROM at 0x{X:0>8}\n", .{address});
+        }
+        if (physical >= HardwareRegisters.Start and physical <= HardwareRegisters.End) {
+            return;
+        }
+        if (physical >= 0xfffe_0000 and physical <= 0xffff_ffff) {
+            return;
         }
 
         std.debug.panic("Unhandled write8 at 0x{X:0>8}", .{address});
@@ -112,6 +121,15 @@ pub const Bus = struct {
         self.write8(address + 1, bytes[1]);
     }
     pub fn write32(self: *Bus, address: u32, value: u32) void {
+        const physical = maskRegion(address);
+
+        if (physical < 0x0000_2000) {
+            std.debug.print(
+                "RAM write32 addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>8}\n",
+                .{ address, physical, value },
+            );
+        }
+
         var bytes: [4]u8 = undefined;
         std.mem.writeInt(u32, &bytes, value, .little);
         self.write8(address, bytes[0]);

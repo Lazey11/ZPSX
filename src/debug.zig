@@ -41,16 +41,39 @@ pub fn unknownSpecial(instr: cpu_f.Instruction) noreturn {
         .{ instr.funct(), instr.raw },
     );
 }
+
+pub fn unhandledCop0(instr: cpu_f.Instruction) noreturn {
+    debugPanic(
+        "Unhandled COP0 rs=0x{X} rd={} rt={} instruction 0x{X:0>8}\n",
+        .{ instr.rs(), instr.rd(), instr.rt(), instr.raw },
+    );
+}
+
 pub fn cpuDebug(cpu: *const cpu_f.Cpu) void {
     debugPrint(
-        "NEXT=0x{X:0>8} R8=0x{X:0>8} R9=0x{X:0>8} SP=0x{X:0>8} RA=0x{X:0>8}\n",
+        "NEXT=0x{X:0>8} R1=0x{X:0>8} R2=0x{X:0>8} R3=0x{X:0>8} R4=0x{X:0>8} R6=0x{X:0>8} R7=0x{X:0>8} R8=0x{X:0>8} R9=0x{X:0>8} R10=0x{X:0>8} R11=0x{X:0>8} R26=0x{X:0>8} SP=0x{X:0>8} RA=0x{X:0>8}\n",
         .{
             cpu.pc_next,
+            cpu.regs[1],
+            cpu.regs[2],
+            cpu.regs[3],
+            cpu.regs[4],
+            cpu.regs[6],
+            cpu.regs[7],
             cpu.regs[8],
             cpu.regs[9],
-            cpu.regs[29],
-            cpu.regs[31],
+            cpu.regs[10],
+            cpu.regs[11],
+            cpu.regs[26], // R26 / k0
+            cpu.regs[29], // SP
+            cpu.regs[31], // RA
         },
+    );
+}
+pub fn instructionTraceAt(pc: u32, instr: cpu_f.Instruction) void {
+    debugPrint(
+        "PC=0x{X:0>8} RAW=0x{X:0>8} OP=0x{X}\n",
+        .{ pc, instr.raw, instr.op() },
     );
 }
 

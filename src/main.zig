@@ -30,12 +30,13 @@ pub fn main(init: std.process.Init) !void {
     // main loop
     while (emu_state != .Quit) {
         try controls.inputControls(&emu_state);
-        cpu.step(debug_enabled);
-        if (debug_enabled) {
-            debug.cpuDebug(&cpu);
-        }
-        try display.clearScreen(&sdl, config);
 
+        var i: usize = 0;
+        while (i < 10_000) : (i += 1) {
+            cpu.step(debug_enabled);
+        }
+
+        try display.clearScreen(&sdl, config);
         try display.updateScreen(&sdl, &config);
 
         C.SDL_Delay(16);
