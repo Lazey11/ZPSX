@@ -139,13 +139,15 @@ pub const Instruction = struct {
 
 pub const Cpu = struct {
     instruction_count: u64 = 0,
+    current_pc: u32 = 0,
 
     regs: [32]u32 = [_]u32{0} ** 32,
+
     hi: u32 = 0,
     lo: u32 = 0,
 
-    pc: u32 = 0xbfc0_0000,
-    pc_next: u32 = 0xbfc0_0004,
+    pc: u32 = 0xBFC0_0000,
+    pc_next: u32 = 0xBFC0_0004,
 
     cop0: [32]u32 = [_]u32{0} ** 32,
 
@@ -161,24 +163,12 @@ pub const Cpu = struct {
         _ = self;
     }
 
-    pub fn setReg(self: *@This(), index: usize, value: u32) void {
-        if (index == 0) return;
-
-        if (index == 26) {
-            std.debug.print(
-                "WRITE r26/k0 at PC=0x{X:0>8}: 0x{X:0>8}\n",
-                .{ self.pc, value },
-            );
-        }
-
-        self.regs[index] = value;
-    }
-
     pub fn step(self: *@This(), debug_enabled: bool) void {
         const current_pc = self.pc;
         const raw = self.bus.read32(current_pc);
         const instr = Instruction{ .raw = raw };
 
+        self.current_pc = current_pc;
         self.instruction_count += 1;
 
         if (debug_enabled and self.instruction_count % 100_000 == 0) {
@@ -191,27 +181,53 @@ pub const Cpu = struct {
 
         self.execute(instr);
 
-        // Keep r0 hardwired to zero.
         self.regs[0] = 0;
     }
 
+    pub fn setReg(self: *@This(), index: usize, value: u32) void {
+        if (index == 0) return;
+
+        if (index == 26) {
+            std.debug.print(
+                "WRITE r26/k0 at PC=0x{X:0>8}: 0x{X:0>8}\n",
+                .{ self.current_pc, value },
+            );
+        }
+
+        self.regs[index] = value;
+    }
+    fn cacheIsolated(self: *const @This()) bool {
+        // COP0 Status register is r12.
+        // Bit 16 is IsC / isolate cache on the R3000A.
+        return (self.cop0[12] & 0x0001_0000) != 0;
+    }
     pub fn execute(self: *@This(), instr: Instruction) void {
         switch (instr.op()) {
             @intFromEnum(PrimaryOpcodes.SPECIAL) => self.executeSpecial(instr),
+            @intFromEnum(PrimaryOpcodes.REGIMM) => self.executeRegimm(instr),
 
             @intFromEnum(PrimaryOpcodes.J) => self.opJ(instr),
             @intFromEnum(PrimaryOpcodes.JAL) => self.opJal(instr),
+
             @intFromEnum(PrimaryOpcodes.BEQ) => self.opBeq(instr),
             @intFromEnum(PrimaryOpcodes.BNE) => self.opBne(instr),
+            @intFromEnum(PrimaryOpcodes.BGTZ) => self.opBgtz(instr),
+            @intFromEnum(PrimaryOpcodes.BLEZ) => self.opBlez(instr),
 
             @intFromEnum(PrimaryOpcodes.ADDI) => self.opAddi(instr),
             @intFromEnum(PrimaryOpcodes.ADDIU) => self.opAddiu(instr),
             @intFromEnum(PrimaryOpcodes.ANDI) => self.opAndi(instr),
             @intFromEnum(PrimaryOpcodes.ORI) => self.opOri(instr),
+            @intFromEnum(PrimaryOpcodes.XORI) => self.opXori(instr),
             @intFromEnum(PrimaryOpcodes.LUI) => self.opLui(instr),
+
+            @intFromEnum(PrimaryOpcodes.SLTI) => self.opSlti(instr),
+            @intFromEnum(PrimaryOpcodes.SLTIU) => self.opSltiu(instr),
 
             @intFromEnum(PrimaryOpcodes.LB) => self.opLb(instr),
             @intFromEnum(PrimaryOpcodes.LBU) => self.opLbu(instr),
+            @intFromEnum(PrimaryOpcodes.LH) => self.opLh(instr),
+            @intFromEnum(PrimaryOpcodes.LHU) => self.opLhu(instr),
             @intFromEnum(PrimaryOpcodes.LW) => self.opLw(instr),
 
             @intFromEnum(PrimaryOpcodes.SB) => self.opSb(instr),
@@ -230,15 +246,40 @@ pub const Cpu = struct {
         };
 
         switch (funct) {
+            .SYSCALL => self.opSyscall(instr),
+            .BREAK => self.opBreak(instr),
+
             .SLL => self.opSll(instr),
+            .SRL => self.opSrl(instr),
+            .SRA => self.opSra(instr),
+            .SLLV => self.opSllv(instr),
+            .SRLV => self.opSrlv(instr),
+            .SRAV => self.opSrav(instr),
+
             .JR => self.opJr(instr),
+            .JALR => self.opJalr(instr),
 
             .ADD => self.opAdd(instr),
             .ADDU => self.opAddu(instr),
+            .SUB => self.opSub(instr),
+            .SUBU => self.opSubu(instr),
+
+            .MFHI => self.opMfhi(instr),
+            .MFLO => self.opMflo(instr),
+
             .AND => self.opAnd(instr),
             .OR => self.opOr(instr),
+            .XOR => self.opXor(instr),
+            .NOR => self.opNor(instr),
+
             .SLT => self.opSlt(instr),
             .SLTU => self.opSltu(instr),
+
+            .DIV => self.opDiv(instr),
+            .DIVU => self.opDivu(instr),
+
+            .MULT => self.opMult(instr),
+            .MULTU => self.opMultu(instr),
 
             else => debug_f.unhandledSpecial(funct, instr),
         }
@@ -251,6 +292,23 @@ pub const Cpu = struct {
             @intFromEnum(COP0Opcode.RFE) => self.opRfe(instr),
             else => debug_f.unhandledCop0(instr),
         }
+    }
+
+    pub fn opSyscall(self: *@This(), instr: Instruction) void {
+        _ = instr;
+        self.cop0[13] = (self.cop0[13] & ~@as(u32, 0x7C)) | (8 << 2);
+        self.cop0[14] = self.current_pc;
+
+        self.cop0[12] = (self.cop0[12] & ~@as(u32, 0x3F)) | ((self.cop0[12] << 2) & 0x3F);
+        self.pc_next = 0x8000_0080;
+    }
+    pub fn opBreak(self: *@This(), instr: Instruction) void {
+        _ = instr;
+        self.cop0[13] = (self.cop0[13] & ~@as(u32, 0x7C)) | (9 << 2);
+        self.cop0[14] = self.current_pc;
+
+        self.cop0[12] = (self.cop0[12] & ~@as(u32, 0x3F)) | ((self.cop0[12] << 2) & 0x3F);
+        self.pc_next = 0x8000_0080;
     }
 
     pub fn opAdd(self: *@This(), instr: Instruction) void {
@@ -305,6 +363,26 @@ pub const Cpu = struct {
 
         self.setReg(rt, self.regs[rs] & @as(u32, instr.imm()));
     }
+    pub fn opXor(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+        const rd: usize = @intCast(instr.rd());
+
+        self.setReg(rd, self.regs[rs] ^ self.regs[rt]);
+    }
+    pub fn opNor(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+        const rd: usize = @intCast(instr.rd());
+
+        self.setReg(rd, ~(self.regs[rs] | self.regs[rt]));
+    }
+    pub fn opXori(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+
+        self.setReg(rt, self.regs[rs] ^ @as(u32, instr.imm()));
+    }
 
     pub fn opOr(self: *@This(), instr: Instruction) void {
         const rs: usize = @intCast(instr.rs());
@@ -333,6 +411,42 @@ pub const Cpu = struct {
 
         self.setReg(rd, self.regs[rt] << instr.shamt());
     }
+    pub fn opSrl(self: *@This(), instr: Instruction) void {
+        const rt: usize = @intCast(instr.rt());
+        const rd: usize = @intCast(instr.rd());
+
+        self.setReg(rd, self.regs[rt] >> instr.shamt());
+    }
+    pub fn opSra(self: *@This(), instr: Instruction) void {
+        const rt: usize = @intCast(instr.rt());
+        const rd: usize = @intCast(instr.rd());
+        const value: i32 = @bitCast(self.regs[rt]);
+        const result = value >> instr.shamt();
+        self.setReg(rd, @bitCast(result));
+    }
+    pub fn opSllv(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+        const rd: usize = @intCast(instr.rd());
+        const shift: u5 = @intCast(self.regs[rs] & 0x1F);
+        self.setReg(rd, self.regs[rt] << shift);
+    }
+    pub fn opSrlv(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+        const rd: usize = @intCast(instr.rd());
+        const shift: u5 = @intCast(self.regs[rs] & 0x1F);
+
+        self.setReg(rd, self.regs[rt] >> shift);
+    }
+    pub fn opSrav(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+        const rd: usize = @intCast(instr.rd());
+        const shift: u5 = @intCast(self.regs[rs] & 0x1F);
+        const value: i32 = @bitCast(self.regs[rt]);
+        self.setReg(rd, @bitCast(value >> shift));
+    }
 
     pub fn opSlt(self: *@This(), instr: Instruction) void {
         const rs: usize = @intCast(instr.rs());
@@ -355,46 +469,90 @@ pub const Cpu = struct {
 
     pub fn opJ(self: *@This(), instr: Instruction) void {
         const target = @as(u32, instr.target()) << 2;
-        const jump_addr = (self.pc & 0xF000_0000) | target;
+        const jump_addr = ((self.current_pc +% 4) & 0xF000_0000) | target;
 
-        std.debug.print("J from PC=0x{X:0>8} -> 0x{X:0>8}\n", .{
-            self.pc,
-            jump_addr,
-        });
+        std.debug.print(
+            "J from PC=0x{X:0>8} -> 0x{X:0>8}\n",
+            .{ self.current_pc, jump_addr },
+        );
 
         self.pc_next = jump_addr;
     }
 
     pub fn opJal(self: *@This(), instr: Instruction) void {
         const target = @as(u32, instr.target()) << 2;
-        const jump_addr = (self.pc & 0xF000_0000) | target;
+        const jump_addr = ((self.current_pc +% 4) & 0xF000_0000) | target;
 
-        std.debug.print("JAL from PC=0x{X:0>8} -> 0x{X:0>8}, RA=0x{X:0>8}\n", .{
-            self.pc,
-            jump_addr,
-            self.pc_next,
-        });
+        std.debug.print(
+            "JAL from PC=0x{X:0>8} -> 0x{X:0>8}, RA=0x{X:0>8}\n",
+            .{ self.current_pc, jump_addr, self.pc_next },
+        );
 
-        self.setReg(31, self.pc_next);
+        self.setReg(31, self.current_pc +% 8);
         self.pc_next = jump_addr;
+    }
+    pub fn opJalr(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rd: usize = @intCast(instr.rd());
+
+        const target = self.regs[rs];
+        const return_addr = self.current_pc +% 8;
+
+        std.debug.print(
+            "JALR from PC=0x{X:0>8} r{}=0x{X:0>8}, rd={}, RA=0x{X:0>8}\n",
+            .{ self.current_pc, rs, target, rd, return_addr },
+        );
+
+        self.setReg(rd, return_addr);
+        self.pc_next = target;
     }
 
     pub fn opJr(self: *@This(), instr: Instruction) void {
         const rs: usize = @intCast(instr.rs());
+        const target = self.regs[rs];
+
+        if (target == 0xA0 or target == 0xB0 or target == 0xC0) {
+            std.debug.print(
+                "BIOS vector call target=0x{X:0>8} r9/function=0x{X:0>2} RA=0x{X:0>8}: [0]=0x{X:0>8} [4]=0x{X:0>8} [8]=0x{X:0>8} [C]=0x{X:0>8}\n",
+                .{
+                    target,
+                    self.regs[9],
+                    self.regs[31],
+                    self.bus.read32(target + 0),
+                    self.bus.read32(target + 4),
+                    self.bus.read32(target + 8),
+                    self.bus.read32(target + 12),
+                },
+            );
+        }
+
+        if (target == 0x5C0 or target == 0x5C4 or target == 0x5E0 or target == 0x5E4 or target == 0x600) {
+            std.debug.print(
+                "BIOS dispatcher target=0x{X:0>8} r9/function=0x{X:0>2} RA=0x{X:0>8}\n",
+                .{ target, self.regs[9], self.regs[31] },
+            );
+        }
+
+        if (target == 0xBFC01920) {
+            std.debug.print(
+                "ENTER BFC01920 via JR at PC=0x{X:0>8}, r9/function=0x{X:0>2}, RA=0x{X:0>8}\n",
+                .{ self.current_pc, self.regs[9], self.regs[31] },
+            );
+        }
 
         if (rs == 26 and self.regs[26] == 0) {
             std.debug.panic(
                 "JR k0 with k0=0 at PC=0x{X:0>8} raw=0x{X:0>8} RA=0x{X:0>8}\n",
-                .{ self.pc, instr.raw, self.regs[31] },
+                .{ self.current_pc, instr.raw, self.regs[31] },
             );
         }
 
         std.debug.print(
             "JR from PC=0x{X:0>8} raw=0x{X:0>8} r{}=0x{X:0>8} RA=0x{X:0>8}\n",
-            .{ self.pc, instr.raw, rs, self.regs[rs], self.regs[31] },
+            .{ self.current_pc, instr.raw, rs, self.regs[rs], self.regs[31] },
         );
 
-        self.pc_next = self.regs[rs];
+        self.pc_next = target;
     }
 
     pub fn opBeq(self: *@This(), instr: Instruction) void {
@@ -416,6 +574,67 @@ pub const Cpu = struct {
             self.pc_next = self.pc +% @as(u32, @bitCast(offset));
         }
     }
+    pub fn opBgtz(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const value: i32 = @bitCast(self.regs[rs]);
+
+        if (value > 0) {
+            const offset: i32 = instr.immSigned32() << 2;
+            self.pc_next = self.pc +% @as(u32, @bitCast(offset));
+        }
+    }
+    pub fn opBlez(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const value: i32 = @bitCast(self.regs[rs]);
+
+        if (value <= 0) {
+            const offset: i32 = instr.immSigned32() << 2;
+            self.pc_next = self.pc +% @as(u32, @bitCast(offset));
+        }
+    }
+    pub fn opBltz(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const value: i32 = @bitCast(self.regs[rs]);
+
+        if (value < 0) {
+            const offset: i32 = instr.immSigned32() << 2;
+            self.pc_next = self.pc +% @as(u32, @bitCast(offset));
+        }
+    }
+
+    pub fn opBgez(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const value: i32 = @bitCast(self.regs[rs]);
+
+        if (value >= 0) {
+            const offset: i32 = instr.immSigned32() << 2;
+            self.pc_next = self.pc +% @as(u32, @bitCast(offset));
+        }
+    }
+
+    pub fn opBltzal(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const value: i32 = @bitCast(self.regs[rs]);
+
+        self.setReg(31, self.current_pc +% 8);
+
+        if (value < 0) {
+            const offset: i32 = instr.immSigned32() << 2;
+            self.pc_next = self.pc +% @as(u32, @bitCast(offset));
+        }
+    }
+
+    pub fn opBgezal(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const value: i32 = @bitCast(self.regs[rs]);
+
+        self.setReg(31, self.current_pc +% 8);
+
+        if (value >= 0) {
+            const offset: i32 = instr.immSigned32() << 2;
+            self.pc_next = self.pc +% @as(u32, @bitCast(offset));
+        }
+    }
 
     pub fn opLw(self: *@This(), instr: Instruction) void {
         const rs: usize = @intCast(instr.rs());
@@ -423,6 +642,13 @@ pub const Cpu = struct {
 
         const address = self.regs[rs] +% instr.immSignedU32();
         const value = self.bus.read32(address);
+
+        if (rt == 26) {
+            std.debug.print(
+                "LW -> k0 at PC=0x{X:0>8}: addr=0x{X:0>8} value=0x{X:0>8} base r{}=0x{X:0>8} imm=0x{X:0>4}\n",
+                .{ self.current_pc, address, value, rs, self.regs[rs], instr.imm() },
+            );
+        }
 
         self.setReg(rt, value);
     }
@@ -448,6 +674,25 @@ pub const Cpu = struct {
 
         self.setReg(rt, self.bus.read8(address));
     }
+    pub fn opLh(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+
+        const address = self.regs[rs] +% instr.immSignedU32();
+        const half = self.bus.read16(address);
+        const signed_half: i16 = @bitCast(half);
+        const signed_32: i32 = @as(i32, signed_half);
+
+        self.setReg(rt, @bitCast(signed_32));
+    }
+    pub fn opLhu(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+
+        const address = self.regs[rs] +% instr.immSignedU32();
+
+        self.setReg(rt, self.bus.read16(address));
+    }
 
     pub fn opSw(self: *@This(), instr: Instruction) void {
         const rs: usize = @intCast(instr.rs());
@@ -455,9 +700,10 @@ pub const Cpu = struct {
 
         const address = self.regs[rs] +% instr.immSignedU32();
 
+        if (self.cacheIsolated()) return;
+
         self.bus.write32(address, self.regs[rt]);
     }
-
     pub fn opSh(self: *@This(), instr: Instruction) void {
         const rs: usize = @intCast(instr.rs());
         const rt: usize = @intCast(instr.rt());
@@ -465,9 +711,10 @@ pub const Cpu = struct {
         const address = self.regs[rs] +% instr.immSignedU32();
         const value: u16 = @intCast(self.regs[rt] & 0xFFFF);
 
+        if (self.cacheIsolated()) return;
+
         self.bus.write16(address, value);
     }
-
     pub fn opSb(self: *@This(), instr: Instruction) void {
         const rs: usize = @intCast(instr.rs());
         const rt: usize = @intCast(instr.rt());
@@ -475,7 +722,100 @@ pub const Cpu = struct {
         const address = self.regs[rs] +% instr.immSignedU32();
         const value: u8 = @intCast(self.regs[rt] & 0xFF);
 
+        if (self.cacheIsolated()) return;
+
         self.bus.write8(address, value);
+    }
+    pub fn opSlti(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+        const lhs: i32 = @bitCast(self.regs[rs]);
+        const rhs: i32 = @bitCast(instr.immSigned32());
+        self.setReg(rt, if (lhs < rhs) 1 else 0);
+    }
+    pub fn opSltiu(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+        const imm = instr.immSignedU32();
+        self.setReg(rt, if (self.regs[rs] < imm) 1 else 0);
+    }
+    pub fn opSub(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+        const rd: usize = @intCast(instr.rd());
+
+        const lhs: i32 = @bitCast(self.regs[rs]);
+        const rhs: i32 = @bitCast(self.regs[rt]);
+        const result = lhs -% rhs;
+
+        self.setReg(rd, @bitCast(result));
+    }
+    pub fn opMfhi(self: *@This(), instr: Instruction) void {
+        const rd: usize = @intCast(instr.rd());
+        self.setReg(rd, self.hi);
+    }
+    pub fn opMflo(self: *@This(), instr: Instruction) void {
+        const rd: usize = @intCast(instr.rd());
+        self.setReg(rd, self.lo);
+    }
+    pub fn opDiv(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+        const numerator: i32 = @bitCast(self.regs[rs]);
+        const denominator: i32 = @bitCast(self.regs[rt]);
+        if (denominator == 0) {
+            self.lo = if (numerator >= 0) 0xFFFF_FFFF else 1;
+            self.hi = @bitCast(numerator);
+            return;
+        }
+        if (numerator == std.math.minInt(i32) and denominator == -1) {
+            self.lo = @bitCast(numerator);
+            self.hi = 0;
+            return;
+        }
+        const quotient = @divTrunc(numerator, denominator);
+        const remainder = @rem(numerator, denominator);
+        self.lo = @bitCast(quotient);
+        self.hi = @bitCast(remainder);
+    }
+    pub fn opDivu(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+        const numerator = self.regs[rs];
+        const denominator = self.regs[rt];
+        if (denominator == 0) {
+            self.lo = 0xFFFF_FFFF;
+            self.hi = numerator;
+            return;
+        }
+        self.lo = numerator / denominator;
+        self.hi = numerator % denominator;
+    }
+    pub fn opMult(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+        const lhs: i32 = @bitCast(self.regs[rs]);
+        const rhs: i32 = @bitCast(self.regs[rt]);
+        const result: i64 = @as(i64, lhs) * @as(i64, rhs);
+        const result_u: i64 = @bitCast(result);
+        self.lo = @intCast(result_u & 0xFFFF_FFFF);
+        self.hi = @intCast(result_u >> 32);
+    }
+    pub fn opMultu(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+        const result: u64 = @as(u64, self.regs[rs]) * @as(u64, self.regs[rt]);
+
+        self.lo = @intCast(result & 0xFFFF_FFFF);
+        self.hi = @intCast(result >> 32);
+    }
+
+    pub fn opSubu(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+        const rd: usize = @intCast(instr.rd());
+
+        self.setReg(rd, self.regs[rs] -% self.regs[rt]);
     }
 
     pub fn opMfc0(self: *@This(), instr: Instruction) void {
@@ -499,5 +839,17 @@ pub const Cpu = struct {
         const status = self.cop0[status_index];
 
         self.cop0[status_index] = (status & 0xFFFF_FFF0) | ((status >> 2) & 0xF);
+    }
+    pub fn executeRegimm(self: *@This(), instr: Instruction) void {
+        const rt = std.enums.fromInt(RegimmOpcode, instr.rt()) orelse {
+            debug_f.unhandledPrimary(instr);
+        };
+
+        switch (rt) {
+            .BLTZ => self.opBltz(instr),
+            .BGEZ => self.opBgez(instr),
+            .BLTZAL => self.opBltzal(instr),
+            .BGEZAL => self.opBgezal(instr),
+        }
     }
 };
