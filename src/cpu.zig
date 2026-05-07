@@ -150,6 +150,8 @@ pub const Cpu = struct {
     pc_next: u32 = 0xBFC0_0004,
 
     cop0: [32]u32 = [_]u32{0} ** 32,
+    last_status_seen: u32 = 0xFFFF_FFFF,
+    suppress_irq_once: bool = false,
 
     bus: *Bus.Bus,
 
@@ -162,14 +164,67 @@ pub const Cpu = struct {
     pub fn deinit(self: *@This()) void {
         _ = self;
     }
+    fn traceBiosCopyProgress(self: *const @This()) void {
+        if (!debug_f.enable_bios_copy_progress) return;
 
+        if (self.current_pc == 0xBFC0_2B7C and (self.instruction_count % 500_000 == 0)) {
+            std.debug.print(
+                "BIOS COPY progress pc=0x{X:0>8} dst/r4=0x{X:0>8} src/r5=0x{X:0>8} remaining/r6=0x{X:0>8}\n",
+                .{ self.current_pc, self.regs[4], self.regs[5], self.regs[6] },
+            );
+        }
+    }
+    fn traceEventLoop(self: *const @This(), instr: Instruction) void {
+        if (!debug_f.enable_event_loop_trace) return;
+
+        if (self.current_pc >= 0x0000_3E70 and self.current_pc <= 0x0000_3F10) {
+            std.debug.print(
+                "EVENT LOOP PC=0x{X:0>8} RAW=0x{X:0>8} r2=0x{X:0>8} r3=0x{X:0>8} r4=0x{X:0>8} r5=0x{X:0>8} r6=0x{X:0>8} r7=0x{X:0>8} r8=0x{X:0>8} r9=0x{X:0>8} r10=0x{X:0>8} r11=0x{X:0>8} sp=0x{X:0>8} ra=0x{X:0>8}\n",
+                .{ self.current_pc, instr.raw, self.regs[2], self.regs[3], self.regs[4], self.regs[5], self.regs[6], self.regs[7], self.regs[8], self.regs[9], self.regs[10], self.regs[11], self.regs[29], self.regs[31] },
+            );
+        }
+    }
+    fn tracePcProgress(self: *const @This()) void {
+        if (self.instruction_count % 1_000_000 != 0) return;
+
+        std.debug.print(
+            "PROGRESS icount={} current_pc=0x{X:0>8} pc=0x{X:0>8} pc_next=0x{X:0>8} ra=0x{X:0>8} sp=0x{X:0>8} I_STAT=0x{X:0>8} I_MASK=0x{X:0>8}\n",
+            .{
+                self.instruction_count,
+                self.current_pc,
+                self.pc,
+                self.pc_next,
+                self.regs[31],
+                self.regs[29],
+                self.bus.interrupt_status,
+                self.bus.interrupt_mask,
+            },
+        );
+    }
+    fn watchStatus(self: *@This(), reason: []const u8) void {
+        const status = self.cop0[12];
+
+        if (status != self.last_status_seen) {
+            std.debug.print(
+                "STATUS CHANGE {s} PC=0x{X:0>8} old=0x{X:0>8} new=0x{X:0>8}\n",
+                .{ reason, self.current_pc, self.last_status_seen, status },
+            );
+
+            self.last_status_seen = status;
+        }
+    }
     pub fn step(self: *@This(), debug_enabled: bool) void {
         const current_pc = self.pc;
         const raw = self.bus.read32(current_pc);
         const instr = Instruction{ .raw = raw };
 
         self.current_pc = current_pc;
+        self.bus.debug_cpu_pc = current_pc;
         self.instruction_count += 1;
+        self.traceBiosCopyProgress();
+        self.traceEventLoop(instr);
+        self.tracePcProgress();
+        debug_f.biosLoopTrace(self, raw);
 
         if (debug_enabled and self.instruction_count % 100_000 == 0) {
             debug_f.instructionTraceAt(current_pc, instr);
@@ -181,18 +236,22 @@ pub const Cpu = struct {
 
         self.execute(instr);
 
+        self.bus.tick();
+        self.checkInterrupts();
+        self.watchStatus("after-step");
+
         self.regs[0] = 0;
     }
 
     pub fn setReg(self: *@This(), index: usize, value: u32) void {
         if (index == 0) return;
 
-        if (index == 26) {
-            std.debug.print(
-                "WRITE r26/k0 at PC=0x{X:0>8}: 0x{X:0>8}\n",
-                .{ self.current_pc, value },
-            );
-        }
+        // if (index == 26) {
+        //     std.debug.print(
+        //         "WRITE r26/k0 at PC=0x{X:0>8}: 0x{X:0>8}\n",
+        //         .{ self.current_pc, value },
+        //     );
+        // }
 
         self.regs[index] = value;
     }
@@ -200,6 +259,22 @@ pub const Cpu = struct {
         // COP0 Status register is r12.
         // Bit 16 is IsC / isolate cache on the R3000A.
         return (self.cop0[12] & 0x0001_0000) != 0;
+    }
+    fn branchTarget(self: *const @This(), instr: Instruction) u32 {
+        const offset: i32 = instr.immSigned32() << 2;
+        return self.pc +% @as(u32, @bitCast(offset));
+    }
+    fn traceBranch(self: *const @This(), instr: Instruction, taken: bool, target: u32) void {
+        if (self.current_pc >= 0xBFC0_2B50 and self.current_pc <= 0xBFC0_2B90) {
+            debug_f.branchTrace(
+                self.current_pc,
+                instr.raw,
+                taken,
+                target,
+                self.pc,
+                self.pc_next,
+            );
+        }
     }
     pub fn execute(self: *@This(), instr: Instruction) void {
         switch (instr.op()) {
@@ -229,10 +304,14 @@ pub const Cpu = struct {
             @intFromEnum(PrimaryOpcodes.LH) => self.opLh(instr),
             @intFromEnum(PrimaryOpcodes.LHU) => self.opLhu(instr),
             @intFromEnum(PrimaryOpcodes.LW) => self.opLw(instr),
+            @intFromEnum(PrimaryOpcodes.LWL) => self.opLwl(instr),
+            @intFromEnum(PrimaryOpcodes.LWR) => self.opLwr(instr),
 
             @intFromEnum(PrimaryOpcodes.SB) => self.opSb(instr),
             @intFromEnum(PrimaryOpcodes.SH) => self.opSh(instr),
             @intFromEnum(PrimaryOpcodes.SW) => self.opSw(instr),
+            @intFromEnum(PrimaryOpcodes.SWL) => self.opSwl(instr),
+            @intFromEnum(PrimaryOpcodes.SWR) => self.opSwr(instr),
 
             @intFromEnum(PrimaryOpcodes.COP0) => self.executeCop0(instr),
 
@@ -265,7 +344,9 @@ pub const Cpu = struct {
             .SUBU => self.opSubu(instr),
 
             .MFHI => self.opMfhi(instr),
+            .MTHI => self.opMthi(instr),
             .MFLO => self.opMflo(instr),
+            .MTLO => self.opMtlo(instr),
 
             .AND => self.opAnd(instr),
             .OR => self.opOr(instr),
@@ -280,27 +361,82 @@ pub const Cpu = struct {
 
             .MULT => self.opMult(instr),
             .MULTU => self.opMultu(instr),
-
-            else => debug_f.unhandledSpecial(funct, instr),
         }
     }
 
-    pub fn executeCop0(self: *@This(), instr: Instruction) void {
-        switch (instr.rs()) {
-            @intFromEnum(COP0Opcode.MFC0) => self.opMfc0(instr),
-            @intFromEnum(COP0Opcode.MTC0) => self.opMtc0(instr),
-            @intFromEnum(COP0Opcode.RFE) => self.opRfe(instr),
+    fn executeCop0(self: *@This(), instr: Instruction) void {
+        if (instr.raw == 0x4200_0010) {
+            self.opRfe(instr);
+            return;
+        }
+
+        const rs = instr.rs();
+
+        switch (rs) {
+            0x00 => self.opMfc0(instr),
+            0x04 => self.opMtc0(instr),
             else => debug_f.unhandledCop0(instr),
         }
     }
 
+    fn checkInterrupts(self: *@This()) void {
+        if (self.suppress_irq_once) {
+            self.suppress_irq_once = false;
+            return;
+        }
+
+        const pending_bus_irq = (self.bus.interrupt_status & self.bus.interrupt_mask) != 0;
+
+        // PS1 hardware interrupt line maps to COP0 Cause.IP2, bit 10.
+        if (pending_bus_irq) {
+            self.cop0[13] |= @as(u32, 1) << 10;
+        } else {
+            self.cop0[13] &= ~(@as(u32, 1) << 10);
+        }
+
+        const status = self.cop0[12];
+        const cause = self.cop0[13];
+
+        const iec = (status & 0x0000_0001) != 0;
+        const masked_pending = (status & cause & 0x0000_FF00) != 0;
+
+        if (!iec or !masked_pending) {
+            return;
+        }
+
+        // Interrupt exception: ExcCode = 0.
+        self.cop0[13] &= ~@as(u32, 0x0000_007C);
+
+        // EPC = interrupted instruction address.
+        self.cop0[14] = self.pc;
+
+        // R3000A status stack push:
+        // KUc/IEc -> KUp/IEp -> KUo/IEo, current KUc/IEc cleared.
+        self.cop0[12] = (self.cop0[12] & ~@as(u32, 0x0000_003F)) |
+            ((self.cop0[12] << 2) & 0x0000_003F);
+
+        std.debug.print(
+            "CPU IRQ exception PC=0x{X:0>8} EPC=0x{X:0>8} STATUS=0x{X:0>8} CAUSE=0x{X:0>8} I_STAT=0x{X:0>8} I_MASK=0x{X:0>8}\n",
+            .{
+                self.current_pc,
+                self.cop0[14],
+                self.cop0[12],
+                self.cop0[13],
+                self.bus.interrupt_status,
+                self.bus.interrupt_mask,
+            },
+        );
+
+        self.pc = 0x8000_0080;
+        self.pc_next = 0x8000_0084;
+    }
     pub fn opSyscall(self: *@This(), instr: Instruction) void {
         _ = instr;
         self.cop0[13] = (self.cop0[13] & ~@as(u32, 0x7C)) | (8 << 2);
         self.cop0[14] = self.current_pc;
-
         self.cop0[12] = (self.cop0[12] & ~@as(u32, 0x3F)) | ((self.cop0[12] << 2) & 0x3F);
-        self.pc_next = 0x8000_0080;
+        self.pc = 0x8000_0080;
+        self.pc_next = 0x8000_0084;
     }
     pub fn opBreak(self: *@This(), instr: Instruction) void {
         _ = instr;
@@ -308,7 +444,8 @@ pub const Cpu = struct {
         self.cop0[14] = self.current_pc;
 
         self.cop0[12] = (self.cop0[12] & ~@as(u32, 0x3F)) | ((self.cop0[12] << 2) & 0x3F);
-        self.pc_next = 0x8000_0080;
+        self.pc = 0x8000_0080;
+        self.pc_next = 0x8000_0084;
     }
 
     pub fn opAdd(self: *@This(), instr: Instruction) void {
@@ -470,24 +607,24 @@ pub const Cpu = struct {
     pub fn opJ(self: *@This(), instr: Instruction) void {
         const target = @as(u32, instr.target()) << 2;
         const jump_addr = ((self.current_pc +% 4) & 0xF000_0000) | target;
-
-        std.debug.print(
-            "J from PC=0x{X:0>8} -> 0x{X:0>8}\n",
-            .{ self.current_pc, jump_addr },
-        );
-
+        if (debug_f.enable_jump_trace) {
+            std.debug.print(
+                "J from PC=0x{X:0>8} -> 0x{X:0>8}\n",
+                .{ self.current_pc, jump_addr },
+            );
+        }
         self.pc_next = jump_addr;
     }
 
     pub fn opJal(self: *@This(), instr: Instruction) void {
         const target = @as(u32, instr.target()) << 2;
         const jump_addr = ((self.current_pc +% 4) & 0xF000_0000) | target;
-
-        std.debug.print(
-            "JAL from PC=0x{X:0>8} -> 0x{X:0>8}, RA=0x{X:0>8}\n",
-            .{ self.current_pc, jump_addr, self.pc_next },
-        );
-
+        if (debug_f.enable_jump_trace) {
+            std.debug.print(
+                "JAL from PC=0x{X:0>8} -> 0x{X:0>8}, RA=0x{X:0>8}\n",
+                .{ self.current_pc, jump_addr, self.pc_next },
+            );
+        }
         self.setReg(31, self.current_pc +% 8);
         self.pc_next = jump_addr;
     }
@@ -497,12 +634,12 @@ pub const Cpu = struct {
 
         const target = self.regs[rs];
         const return_addr = self.current_pc +% 8;
-
-        std.debug.print(
-            "JALR from PC=0x{X:0>8} r{}=0x{X:0>8}, rd={}, RA=0x{X:0>8}\n",
-            .{ self.current_pc, rs, target, rd, return_addr },
-        );
-
+        if (debug_f.enable_jump_trace) {
+            std.debug.print(
+                "JALR from PC=0x{X:0>8} r{}=0x{X:0>8}, rd={}, RA=0x{X:0>8}\n",
+                .{ self.current_pc, rs, target, rd, return_addr },
+            );
+        }
         self.setReg(rd, return_addr);
         self.pc_next = target;
     }
@@ -511,22 +648,13 @@ pub const Cpu = struct {
         const rs: usize = @intCast(instr.rs());
         const target = self.regs[rs];
 
-        if (target == 0xA0 or target == 0xB0 or target == 0xC0) {
+        if (debug_f.enable_bios_vector_trace) {
             std.debug.print(
-                "BIOS vector call target=0x{X:0>8} r9/function=0x{X:0>2} RA=0x{X:0>8}: [0]=0x{X:0>8} [4]=0x{X:0>8} [8]=0x{X:0>8} [C]=0x{X:0>8}\n",
-                .{
-                    target,
-                    self.regs[9],
-                    self.regs[31],
-                    self.bus.read32(target + 0),
-                    self.bus.read32(target + 4),
-                    self.bus.read32(target + 8),
-                    self.bus.read32(target + 12),
-                },
+                "BIOS vector call target=0x{X:0>8} r9/function=0x{X} RA=0x{X:0>8}\n",
+                .{ target, self.regs[9], self.regs[31] },
             );
         }
-
-        if (target == 0x5C0 or target == 0x5C4 or target == 0x5E0 or target == 0x5E4 or target == 0x600) {
+        if (debug_f.enable_bios_vector_trace) {
             std.debug.print(
                 "BIOS dispatcher target=0x{X:0>8} r9/function=0x{X:0>2} RA=0x{X:0>8}\n",
                 .{ target, self.regs[9], self.regs[31] },
@@ -547,21 +675,29 @@ pub const Cpu = struct {
             );
         }
 
-        std.debug.print(
-            "JR from PC=0x{X:0>8} raw=0x{X:0>8} r{}=0x{X:0>8} RA=0x{X:0>8}\n",
-            .{ self.current_pc, instr.raw, rs, self.regs[rs], self.regs[31] },
-        );
-
+        if (target == 0xA0 or target == 0xB0 or target == 0xC0 or
+            target == 0x5C0 or target == 0x5C4 or target == 0x5E0 or
+            target == 0x5E4 or target == 0x600 or target == 0xBFC01920)
+        {
+            if (debug_f.enable_jump_trace) {
+                std.debug.print(
+                    "JR from PC=0x{X:0>8} raw=0x{X:0>8} r{}=0x{X:0>8} RA=0x{X:0>8}\n",
+                    .{ self.current_pc, instr.raw, rs, self.regs[rs], self.regs[31] },
+                );
+            }
+        }
         self.pc_next = target;
     }
-
     pub fn opBeq(self: *@This(), instr: Instruction) void {
         const rs: usize = @intCast(instr.rs());
         const rt: usize = @intCast(instr.rt());
 
         if (self.regs[rs] == self.regs[rt]) {
-            const offset: i32 = instr.immSigned32() << 2;
-            self.pc_next = self.pc +% @as(u32, @bitCast(offset));
+            const target = self.branchTarget(instr);
+            self.pc_next = target;
+            self.traceBranch(instr, true, target);
+        } else {
+            self.traceBranch(instr, false, self.pc_next);
         }
     }
 
@@ -570,8 +706,11 @@ pub const Cpu = struct {
         const rt: usize = @intCast(instr.rt());
 
         if (self.regs[rs] != self.regs[rt]) {
-            const offset: i32 = instr.immSigned32() << 2;
-            self.pc_next = self.pc +% @as(u32, @bitCast(offset));
+            const target = self.branchTarget(instr);
+            self.pc_next = target;
+            self.traceBranch(instr, true, target);
+        } else {
+            self.traceBranch(instr, false, self.pc_next);
         }
     }
     pub fn opBgtz(self: *@This(), instr: Instruction) void {
@@ -579,8 +718,11 @@ pub const Cpu = struct {
         const value: i32 = @bitCast(self.regs[rs]);
 
         if (value > 0) {
-            const offset: i32 = instr.immSigned32() << 2;
-            self.pc_next = self.pc +% @as(u32, @bitCast(offset));
+            const target = self.branchTarget(instr);
+            self.pc_next = target;
+            self.traceBranch(instr, true, target);
+        } else {
+            self.traceBranch(instr, false, self.pc_next);
         }
     }
     pub fn opBlez(self: *@This(), instr: Instruction) void {
@@ -588,8 +730,11 @@ pub const Cpu = struct {
         const value: i32 = @bitCast(self.regs[rs]);
 
         if (value <= 0) {
-            const offset: i32 = instr.immSigned32() << 2;
-            self.pc_next = self.pc +% @as(u32, @bitCast(offset));
+            const target = self.branchTarget(instr);
+            self.pc_next = target;
+            self.traceBranch(instr, true, target);
+        } else {
+            self.traceBranch(instr, false, self.pc_next);
         }
     }
     pub fn opBltz(self: *@This(), instr: Instruction) void {
@@ -597,8 +742,11 @@ pub const Cpu = struct {
         const value: i32 = @bitCast(self.regs[rs]);
 
         if (value < 0) {
-            const offset: i32 = instr.immSigned32() << 2;
-            self.pc_next = self.pc +% @as(u32, @bitCast(offset));
+            const target = self.branchTarget(instr);
+            self.pc_next = target;
+            self.traceBranch(instr, true, target);
+        } else {
+            self.traceBranch(instr, false, self.pc_next);
         }
     }
 
@@ -607,11 +755,13 @@ pub const Cpu = struct {
         const value: i32 = @bitCast(self.regs[rs]);
 
         if (value >= 0) {
-            const offset: i32 = instr.immSigned32() << 2;
-            self.pc_next = self.pc +% @as(u32, @bitCast(offset));
+            const target = self.branchTarget(instr);
+            self.pc_next = target;
+            self.traceBranch(instr, true, target);
+        } else {
+            self.traceBranch(instr, false, self.pc_next);
         }
     }
-
     pub fn opBltzal(self: *@This(), instr: Instruction) void {
         const rs: usize = @intCast(instr.rs());
         const value: i32 = @bitCast(self.regs[rs]);
@@ -619,8 +769,11 @@ pub const Cpu = struct {
         self.setReg(31, self.current_pc +% 8);
 
         if (value < 0) {
-            const offset: i32 = instr.immSigned32() << 2;
-            self.pc_next = self.pc +% @as(u32, @bitCast(offset));
+            const target = self.branchTarget(instr);
+            self.pc_next = target;
+            self.traceBranch(instr, true, target);
+        } else {
+            self.traceBranch(instr, false, self.pc_next);
         }
     }
 
@@ -631,8 +784,11 @@ pub const Cpu = struct {
         self.setReg(31, self.current_pc +% 8);
 
         if (value >= 0) {
-            const offset: i32 = instr.immSigned32() << 2;
-            self.pc_next = self.pc +% @as(u32, @bitCast(offset));
+            const target = self.branchTarget(instr);
+            self.pc_next = target;
+            self.traceBranch(instr, true, target);
+        } else {
+            self.traceBranch(instr, false, self.pc_next);
         }
     }
 
@@ -650,6 +806,42 @@ pub const Cpu = struct {
             );
         }
 
+        self.setReg(rt, value);
+    }
+    pub fn opLwl(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+
+        const address = self.regs[rs] +% instr.immSignedU32();
+        const aligned = address & 0xFFFF_FFFC;
+        const word = self.bus.read32(aligned);
+        const old = self.regs[rt];
+
+        const value: u32 = switch (address & 3) {
+            0 => (old & 0x00FF_FFFF) | (word << 24),
+            1 => (old & 0x0000_FFFF) | (word << 16),
+            2 => (old & 0x0000_00FF) | (word << 8),
+            3 => word,
+            else => unreachable,
+        };
+        self.setReg(rt, value);
+    }
+    pub fn opLwr(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+
+        const address = self.regs[rs] +% instr.immSignedU32();
+        const aligned = address & 0xFFFF_FFFC;
+        const word = self.bus.read32(aligned);
+        const old = self.regs[rt];
+
+        const value: u32 = switch (address & 3) {
+            0 => word,
+            1 => (old & 0xFF00_0000) | (word >> 8),
+            2 => (old & 0xFFFF_0000) | (word >> 16),
+            3 => (old & 0xFFFF_FF00) | (word >> 24),
+            else => unreachable,
+        };
         self.setReg(rt, value);
     }
 
@@ -704,6 +896,51 @@ pub const Cpu = struct {
 
         self.bus.write32(address, self.regs[rt]);
     }
+    pub fn opSwl(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+
+        const address = self.regs[rs] +% instr.immSignedU32();
+
+        if (self.cacheIsolated()) return;
+
+        const aligned = address & 0xFFFF_FFFC;
+        const old = self.bus.read32(aligned);
+        const value = self.regs[rt];
+
+        const merged: u32 = switch (address & 3) {
+            0 => (old & 0xFFFF_FF00) | (value >> 24),
+            1 => (old & 0xFFFF_0000) | (value >> 16),
+            2 => (old & 0xFF00_0000) | (value >> 8),
+            3 => value,
+            else => unreachable,
+        };
+        self.bus.write32(aligned, merged);
+    }
+
+    pub fn opSwr(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        const rt: usize = @intCast(instr.rt());
+
+        const address = self.regs[rs] +% instr.immSignedU32();
+
+        if (self.cacheIsolated()) return;
+
+        const aligned = address & 0xFFFF_FFFC;
+        const old = self.bus.read32(aligned);
+        const value = self.regs[rt];
+
+        const merged: u32 = switch (address & 3) {
+            0 => value,
+            1 => (old & 0x0000_00FF) | (value << 8),
+            2 => (old & 0x0000_FFFF) | (value << 16),
+            3 => (old & 0x00FF_FFFF) | (value << 24),
+            else => unreachable,
+        };
+
+        self.bus.write32(aligned, merged);
+    }
+
     pub fn opSh(self: *@This(), instr: Instruction) void {
         const rs: usize = @intCast(instr.rs());
         const rt: usize = @intCast(instr.rt());
@@ -754,10 +991,19 @@ pub const Cpu = struct {
         const rd: usize = @intCast(instr.rd());
         self.setReg(rd, self.hi);
     }
+    pub fn opMthi(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        self.hi = self.regs[rs];
+    }
     pub fn opMflo(self: *@This(), instr: Instruction) void {
         const rd: usize = @intCast(instr.rd());
         self.setReg(rd, self.lo);
     }
+    pub fn opMtlo(self: *@This(), instr: Instruction) void {
+        const rs: usize = @intCast(instr.rs());
+        self.lo = self.regs[rs];
+    }
+
     pub fn opDiv(self: *@This(), instr: Instruction) void {
         const rs: usize = @intCast(instr.rs());
         const rt: usize = @intCast(instr.rt());
@@ -829,16 +1075,54 @@ pub const Cpu = struct {
         const rt: usize = @intCast(instr.rt());
         const rd: usize = @intCast(instr.rd());
 
-        self.cop0[rd] = self.regs[rt];
+        const old_value = self.cop0[rd];
+        const new_value = self.regs[rt];
+
+        self.cop0[rd] = new_value;
+
+        if (rd == 12) {
+            std.debug.print(
+                "MTC0 STATUS PC=0x{X:0>8} old=0x{X:0>8} new=0x{X:0>8} rt=r{} rt_value=0x{X:0>8}\n",
+                .{
+                    self.current_pc,
+                    old_value,
+                    new_value,
+                    rt,
+                    self.regs[rt],
+                },
+            );
+        }
+
+        if (rd == 13) {
+            std.debug.print(
+                "MTC0 CAUSE PC=0x{X:0>8} old=0x{X:0>8} new=0x{X:0>8} rt=r{} rt_value=0x{X:0>8}\n",
+                .{
+                    self.current_pc,
+                    old_value,
+                    new_value,
+                    rt,
+                    self.regs[rt],
+                },
+            );
+        }
     }
 
     pub fn opRfe(self: *@This(), instr: Instruction) void {
         _ = instr;
 
-        const status_index = 12;
-        const status = self.cop0[status_index];
+        const old_status = self.cop0[12];
 
-        self.cop0[status_index] = (status & 0xFFFF_FFF0) | ((status >> 2) & 0xF);
+        self.cop0[12] = (old_status & ~@as(u32, 0x0000_000F)) |
+            ((old_status >> 2) & 0x0000_000F);
+
+        // Important: do not allow an interrupt immediately after RFE
+        // while current_pc is still pointing at the RFE instruction.
+        self.suppress_irq_once = true;
+
+        std.debug.print(
+            "RFE PC=0x{X:0>8} STATUS old=0x{X:0>8} new=0x{X:0>8}\n",
+            .{ self.current_pc, old_status, self.cop0[12] },
+        );
     }
     pub fn executeRegimm(self: *@This(), instr: Instruction) void {
         const rt = std.enums.fromInt(RegimmOpcode, instr.rt()) orelse {
