@@ -2,3 +2,5 @@
 zig-out/
 *.o
 *.exe
+vram_640_0.ppm
+cpu_test.txt

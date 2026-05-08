@@ -14,7 +14,7 @@ pub const max_branch_trace: u32 = 80;
 
 var bios_loop_trace_count: u32 = 0;
 var branch_trace_count: u32 = 0;
-
+pub const enable_event_core_trace = false;
 pub const enable_jump_trace = false;
 pub const enable_jal_trace = false;
 pub const enable_jr_trace = false;
@@ -24,6 +24,17 @@ pub const enable_ram_write_trace = false;
 pub const enable_irq_check_trace = false;
 
 pub const enable_bios_copy_progress = false;
+pub const enable_rfe_trace = false;
+pub const enable_irq_exception_trace = false;
+pub const enable_irq_register_trace = true;
+
+pub const enable_status_watch_trace = false;
+pub const enable_mtc0_trace = false;
+pub const enable_loop59_trace = false;
+pub const enable_gpu_loop59_trace = false;
+pub const enable_loop541_trace = false;
+pub const enable_a100_trace = false;
+
 pub fn getInput(init: std.process.Init) !bool {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
 

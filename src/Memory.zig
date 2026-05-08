@@ -1,7 +1,7 @@
 const std = @import("std");
 const BIOS = @import("bios.zig");
 const debug_f = @import("debug.zig");
-
+const gpu_f = @import("gpu.zig");
 pub const MEMORY_MASK_REGION = [_]u32{
     0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, //KUSEG
     0x7fffffff, //KUSEG0
@@ -54,9 +54,9 @@ pub const Bus = struct {
     spu_regs: [0x200]u8 = [_]u8{0} ** 0x200,
     cdrom_regs: [0x20]u8 = [_]u8{0} ** 0x20,
 
-    gpu_status: u32 = 0x1C00_0000,
-    gpu_gpu0: u32 = 0,
-    gpu_gpu1: u32 = 0,
+    gpu: gpu_f.Gpu = .{},
+
+    dma_dicr: u32 = 0,
 
     root_counter0: u16 = 0,
     root_counter1: u16 = 0,
@@ -141,25 +141,92 @@ pub const Bus = struct {
             );
         }
     }
-    fn traceInterestingHwRead(self: *Bus, physical: u32, value: u32, bits: u8) void {
-        // Only trace likely polling/status registers.
-        const interesting =
-            physical == 0x1F80_1070 or // I_STAT
-            physical == 0x1F80_1074 or // I_MASK
-            physical == 0x1F80_1100 or physical == 0x1F80_1104 or physical == 0x1F80_1108 or
-            physical == 0x1F80_1110 or physical == 0x1F80_1114 or physical == 0x1F80_1118 or
-            physical == 0x1F80_1120 or physical == 0x1F80_1124 or physical == 0x1F80_1128 or
-            physical == 0x1F80_1810 or // GPU GP0
-            physical == 0x1F80_1814 or // GPU STAT
-            physical == 0x1F80_1800 or physical == 0x1F80_1801 or
-            physical == 0x1F80_1802 or physical == 0x1F80_1803; // CDROM
+    fn runDma2Gpu(self: *Bus) void {
+        const madr = self.hwRead32Raw(0x1F80_10A0);
+        const bcr = self.hwRead32Raw(0x1F80_10A4);
+        const chcr = self.hwRead32Raw(0x1F80_10A8);
 
-        if (!interesting) return;
+        const direction_from_ram_to_gpu = (chcr & 1) == 1;
+        if (!direction_from_ram_to_gpu) return;
+
+        const sync_mode = (chcr >> 9) & 0x3;
+
+        if (sync_mode == 2) {
+            self.runDma2GpuLinkedList();
+            return;
+        }
+
+        const block_size = bcr & 0xFFFF;
+        const block_count = (bcr >> 16) & 0xFFFF;
+        const words = if (block_count == 0) block_size else block_size * block_count;
 
         std.debug.print(
-            "HW READ{} PC=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>8}\n",
-            .{ bits, self.debug_cpu_pc, physical, value },
+            "DMA2 GPU block madr=0x{X:0>8} bcr=0x{X:0>8} chcr=0x{X:0>8} words={}\n",
+            .{ madr, bcr, chcr, words },
         );
+
+        var addr = madr & 0x001F_FFFC;
+        var i: u32 = 0;
+        while (i < words) : (i += 1) {
+            const word = self.ramRead32Physical(addr);
+            self.gpu.writeGp0(self.debug_cpu_pc, word);
+            addr = (addr +% 4) & 0x001F_FFFC;
+        }
+    }
+    fn runDma2GpuLinkedList(self: *Bus) void {
+        var addr = self.hwRead32Raw(0x1F80_10A0) & 0x001F_FFFC;
+
+        var packets: u32 = 0;
+        while (packets < 4096) : (packets += 1) {
+            const header = self.ramRead32Physical(addr);
+            const count: u32 = header >> 24;
+            const next_raw: u32 = header & 0x00FF_FFFF;
+
+            if (packets < 8) {
+                //
+            }
+
+            var word_addr = (addr +% 4) & 0x001F_FFFC;
+            var i: u32 = 0;
+            while (i < count) : (i += 1) {
+                const word = self.ramRead32Physical(word_addr);
+                self.gpu.writeGp0(self.debug_cpu_pc, word);
+                word_addr = (word_addr +% 4) & 0x001F_FFFC;
+            }
+
+            if (next_raw == 0x00FF_FFFF) {
+                packets += 1;
+                break;
+            }
+
+            const next_addr = next_raw & 0x001F_FFFC;
+
+            if (next_raw == 0x00FF_FFFF or next_addr == addr) {
+                packets += 1;
+                break;
+            }
+
+            addr = next_addr;
+        }
+    }
+    fn traceInterestingHwRead(self: *Bus, physical: u32, value: u32, bits: u8) void {
+        _ = self;
+        _ = physical;
+        _ = value;
+        _ = bits;
+        return;
+    }
+    fn signalKernelVblankWord(self: *Bus) void {
+        const physical: u32 = 0x0007_9D9C;
+        const old = self.ramRead32Physical(physical);
+        const new = old +% 1;
+        // Incrementing is safer than returning a constant:
+        // wait loops often compare "did this counter change?"
+        self.ramWrite32Physical(physical, new);
+    }
+    pub fn ramWrite8Physical(self: *Bus, physical: u32, value: u8) void {
+        const offset: usize = @intCast(physical - Ram.Start);
+        self.ram.data[offset] = value;
     }
     fn readRootCounter16(self: *Bus, physical: u32) ?u16 {
         return switch (physical) {
@@ -197,6 +264,33 @@ pub const Bus = struct {
 
         return true;
     }
+    fn ramRead32Physical(self: *const Bus, physical: u32) u32 {
+        const offset: usize = @intCast(physical - Ram.Start);
+
+        return @as(u32, self.ram.data[offset]) |
+            (@as(u32, self.ram.data[offset + 1]) << 8) |
+            (@as(u32, self.ram.data[offset + 2]) << 16) |
+            (@as(u32, self.ram.data[offset + 3]) << 24);
+    }
+
+    fn ramWrite32Physical(self: *Bus, physical: u32, value: u32) void {
+        const offset: usize = @intCast(physical - Ram.Start);
+
+        self.ram.data[offset] = @intCast(value & 0xFF);
+        self.ram.data[offset + 1] = @intCast((value >> 8) & 0xFF);
+        self.ram.data[offset + 2] = @intCast((value >> 16) & 0xFF);
+        self.ram.data[offset + 3] = @intCast((value >> 24) & 0xFF);
+    }
+
+    fn deliverBiosVblankEvent(self: *Bus) void {
+        const vblank_entry: u32 = 0x0000_8674;
+
+        const state = self.ramRead32Physical(vblank_entry);
+
+        if (state != 0) {
+            self.ramWrite32Physical(vblank_entry, state | 0x0000_1000);
+        }
+    }
     pub fn tick(self: *Bus) void {
         self.tick_count +%= 1;
 
@@ -219,19 +313,18 @@ pub const Bus = struct {
             self.root_counter2 = 0;
         }
 
-        // Fake VBlank, but only raise it if VBlank is not already pending.
-        // This prevents constantly reasserting bit 0 immediately after BIOS clears it.
-        if ((self.tick_count % 1_000_000) == 0) {
+        if ((self.tick_count % 500_000) == 0) {
+            // Advance the kernel/game VBlank counter every fake frame.
+            // Do this even if I_STAT bit 0 is already pending.
+            self.signalKernelVblankWord();
+
             if ((self.interrupt_status & 1) == 0) {
                 self.interrupt_status |= 1;
-
-                if ((self.interrupt_mask & 1) != 0) {
-                    std.debug.print(
-                        "VBLANK SET tick={} I_STAT=0x{X:0>8} I_MASK=0x{X:0>8}\n",
-                        .{ self.tick_count, self.interrupt_status, self.interrupt_mask },
-                    );
-                }
             }
+        }
+        if (false and (self.tick_count % 2_000_000) == 1) {
+            self.interrupt_status &= ~@as(u32, 1);
+            self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
         }
     }
     pub fn hwOffSet(physical: u32) usize {
@@ -335,12 +428,13 @@ pub const Bus = struct {
 
             if (physical >= 0x1F80_1810 and physical <= 0x1F80_1813) {
                 const shift: u5 = @intCast((physical - 0x1F80_1810) * 8);
-                return @intCast((self.gpu_gpu0 >> shift) & 0xFF);
+                return @intCast((self.gpu.gp0_last >> shift) & 0xFF);
             }
 
             if (physical >= 0x1F80_1814 and physical <= 0x1F80_1817) {
                 const shift: u5 = @intCast((physical - 0x1F80_1814) * 8);
-                const value: u8 = @intCast((self.gpu_status >> shift) & 0xFF);
+                const status = self.gpu.readStatus();
+                const value: u8 = @intCast((status >> shift) & 0xFF);
 
                 self.traceInterestingHwRead(physical, value, 8);
                 return value;
@@ -423,10 +517,79 @@ pub const Bus = struct {
     }
     pub fn read32(self: *Bus, address: u32) u32 {
         if ((address & 3) != 0) {
+            std.debug.print(
+                "UNALIGNED READ32 PC=0x{X:0>8} addr=0x{X:0>8}\n",
+                .{ self.debug_cpu_pc, address },
+            );
             std.debug.panic("Unaligned read32 at 0x{X:0>8}", .{address});
         }
 
         const physical = maskRegion(address);
+
+        if (false and physical == 0x0007_9D9C and self.debug_cpu_pc >= 0x8005_9DC8 and self.debug_cpu_pc <= 0x8005_9E10) {
+            const value = self.ramRead32Physical(physical);
+            std.debug.print(
+                "WAIT79D9C PC=0x{X:0>8} value=0x{X:0>8}\n",
+                .{ self.debug_cpu_pc, value },
+            );
+            return value;
+        }
+
+        if (false and physical == 0x0007_9D9C and
+            self.debug_cpu_pc >= 0x8005_9DC8 and self.debug_cpu_pc <= 0x8005_9E10)
+        {
+            const value = self.ramRead32Physical(physical);
+
+            std.debug.print(
+                "WAIT79D9C READ32 PC=0x{X:0>8} value=0x{X:0>8}\n",
+                .{ self.debug_cpu_pc, value },
+            );
+
+            return value;
+        }
+
+        if (false and physical >= 0x0000_8648 and physical <= 0x0000_8908 and
+            self.debug_cpu_pc >= 0x0000_3EA8 and self.debug_cpu_pc <= 0x0000_3EB4)
+        {
+            const value =
+                @as(u32, self.read8(address)) |
+                (@as(u32, self.read8(address + 1)) << 8) |
+                (@as(u32, self.read8(address + 2)) << 16) |
+                (@as(u32, self.read8(address + 3)) << 24);
+
+            std.debug.print(
+                "EVENT_TABLE READ32 PC=0x{X:0>8} addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>8}\n",
+                .{ self.debug_cpu_pc, address, physical, value },
+            );
+
+            return value;
+        }
+
+        if (false and (physical == 0x000D_61E8 or physical == 0x000D_61EC)) {
+            const value =
+                @as(u32, self.read8(address)) |
+                (@as(u32, self.read8(address + 1)) << 8) |
+                (@as(u32, self.read8(address + 2)) << 16) |
+                (@as(u32, self.read8(address + 3)) << 24);
+
+            std.debug.print(
+                "BITMAP READ32 PC=0x{X:0>8} addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>8}\n",
+                .{ self.debug_cpu_pc, address, physical, value },
+            );
+
+            return value;
+        }
+
+        if (false and (address == 0x8007_9D9C or physical == 0x0007_9D9C)) {
+            const value: u32 = 0x7FFF_FFFF;
+
+            std.debug.print(
+                "WATCH 80079D9C READ32 FORCED PC=0x{X:0>8} addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>8}\n",
+                .{ self.debug_cpu_pc, address, physical, value },
+            );
+
+            return value;
+        }
 
         // TEMP TEST: force this specific memory-control register.
         // Must be BEFORE the 0x1F801000..0x1F8010FF generic block.
@@ -458,6 +621,9 @@ pub const Bus = struct {
 
             return value;
         }
+        if (physical == 0x1F80_10F4) {
+            return self.dma_dicr;
+        }
 
         // Interrupt registers should also be BEFORE the generic mem-control block.
         if (physical == 0x1F80_1070) {
@@ -488,9 +654,23 @@ pub const Bus = struct {
             return value;
         }
 
+        if (physical == 0x1F80_1810) {
+            return self.gpu.gp0_last;
+        }
+
         if (physical == 0x1F80_1814) {
-            const value = self.gpu_status;
-            self.traceInterestingHwRead(physical, value, 32);
+            const value = self.gpu.readStatus();
+
+            if (debug_f.enable_gpu_loop59_trace and
+                self.debug_cpu_pc >= 0x8005_9DC0 and
+                self.debug_cpu_pc <= 0x8005_9E20)
+            {
+                std.debug.print(
+                    "GPUSTAT LOOP59 READ PC=0x{X:0>8} value=0x{X:0>8}\n",
+                    .{ self.debug_cpu_pc, value },
+                );
+            }
+
             return value;
         }
 
@@ -510,6 +690,20 @@ pub const Bus = struct {
 
     pub fn write8(self: *Bus, address: u32, value: u8) void {
         const physical = maskRegion(address);
+
+        if (false and physical >= 0x000D_61E8 and physical <= 0x000D_61EF) {
+            std.debug.print(
+                "BITMAP WRITE8 PC=0x{X:0>8} addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>2}\n",
+                .{ self.debug_cpu_pc, address, physical, value },
+            );
+        }
+
+        if (false and physical >= 0x0007_9D9C and physical <= 0x0007_9D9F) {
+            std.debug.print(
+                "WATCH 80079D9C WRITE8 PC=0x{X:0>8} addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>2}\n",
+                .{ self.debug_cpu_pc, address, physical, value },
+            );
+        }
 
         if (physical >= Ram.Start and physical <= Ram.End) {
             self.traceRamWrite(address, physical, value, 8);
@@ -539,15 +733,22 @@ pub const Bus = struct {
                     .{ self.debug_cpu_pc, physical, value },
                 );
             }
+            if (false and physical >= 0x001F_FBAC and physical <= 0x001F_FBAF) {
+                std.debug.print(
+                    "STACK RA SLOT WRITE8 PC=0x{X:0>8} addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>2}\n",
+                    .{ self.debug_cpu_pc, address, physical, value },
+                );
+            }
 
             if (physical >= 0x1F80_1070 and physical <= 0x1F80_1073) {
                 const shift: u5 = @intCast((physical - 0x1F80_1070) * 8);
-                const mask: u32 = @as(u32, 0xFF) << shift;
+                const byte_mask: u32 = @as(u32, 0xFF) << shift;
+                const written: u32 = @as(u32, value) << shift;
 
-                // Minimal I_STAT behavior for now.
-                self.interrupt_status =
-                    (self.interrupt_status & ~mask) |
-                    ((@as(u32, value) << shift) & mask);
+                // I_STAT acknowledge behavior:
+                // writing 0 clears pending bits, writing 1 leaves them unchanged.
+                const clear_mask = written | ~byte_mask;
+                self.interrupt_status &= clear_mask;
 
                 self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
                 return;
@@ -569,8 +770,8 @@ pub const Bus = struct {
                 const shift: u5 = @intCast((physical - 0x1F80_1810) * 8);
                 const mask: u32 = @as(u32, 0xFF) << shift;
 
-                self.gpu_gpu0 =
-                    (self.gpu_gpu0 & ~mask) |
+                self.gpu.gp0_last =
+                    (self.gpu.gp0_last & ~mask) |
                     ((@as(u32, value) << shift) & mask);
 
                 return;
@@ -580,11 +781,11 @@ pub const Bus = struct {
                 const shift: u5 = @intCast((physical - 0x1F80_1814) * 8);
                 const mask: u32 = @as(u32, 0xFF) << shift;
 
-                self.gpu_gpu1 =
-                    (self.gpu_gpu1 & ~mask) |
+                self.gpu.gp1_last =
+                    (self.gpu.gp1_last & ~mask) |
                     ((@as(u32, value) << shift) & mask);
 
-                self.gpu_status = 0x1C00_0000;
+                self.gpu.status |= 0x1C00_0000;
                 return;
             }
 
@@ -618,14 +819,30 @@ pub const Bus = struct {
 
         const physical = maskRegion(address);
 
+        if (false and physical >= 0x000D_61E8 and physical <= 0x000D_61EF) {
+            std.debug.print(
+                "BITMAP WRITE16 PC=0x{X:0>8} addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>4}\n",
+                .{ self.debug_cpu_pc, address, physical, value },
+            );
+        }
+
+        if (false and (physical == 0x001F_FBAC or physical == 0x001F_FBAE)) {
+            std.debug.print(
+                "STACK RA SLOT WRITE16 PC=0x{X:0>8} addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>4}\n",
+                .{ self.debug_cpu_pc, address, physical, value },
+            );
+        }
+
         if (physical == 0x1F80_1070) {
             self.interrupt_status &= @as(u32, value);
             self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
 
-            std.debug.print(
-                "I_STAT WRITE16 PC=0x{X:0>8} value=0x{X:0>4} new_stat=0x{X:0>8}\n",
-                .{ self.debug_cpu_pc, value, self.interrupt_status },
-            );
+            if (debug_f.enable_irq_register_trace) {
+                std.debug.print(
+                    "I_STAT WRITE16 PC=0x{X:0>8} value=0x{X:0>4} new_stat=0x{X:0>8}\n",
+                    .{ self.debug_cpu_pc, value, self.interrupt_status },
+                );
+            }
 
             return;
         }
@@ -634,10 +851,12 @@ pub const Bus = struct {
             self.interrupt_mask = (self.interrupt_mask & 0xFFFF_0000) | @as(u32, value);
             self.hwWrite32Raw(0x1F80_1074, self.interrupt_mask);
 
-            std.debug.print(
-                "I_MASK WRITE16 PC=0x{X:0>8} value=0x{X:0>4} new_mask=0x{X:0>8}\n",
-                .{ self.debug_cpu_pc, value, self.interrupt_mask },
-            );
+            if (debug_f.enable_irq_register_trace) {
+                std.debug.print(
+                    "I_MASK WRITE16 PC=0x{X:0>8} value=0x{X:0>4} new_mask=0x{X:0>8}\n",
+                    .{ self.debug_cpu_pc, value, self.interrupt_mask },
+                );
+            }
 
             return;
         }
@@ -647,6 +866,12 @@ pub const Bus = struct {
                 self.hwWrite8Raw(physical + 1, @intCast((value >> 8) & 0x00FF));
                 return;
             }
+        }
+        if (false and physical == 0x0007_9D9C) {
+            std.debug.print(
+                "WATCH 80079D9C WRITE16 PC=0x{X:0>8} addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>8}\n",
+                .{ self.debug_cpu_pc, address, physical, value },
+            );
         }
 
         self.write8(address, @intCast(value & 0x00FF));
@@ -658,58 +883,127 @@ pub const Bus = struct {
         }
 
         const physical = maskRegion(address);
+        if (false and physical >= 0x0000_8648 and physical <= 0x0000_8908 and ((physical - 0x0000_8648) % 0x2C) == 0) {
+            std.debug.print(
+                "EVENT_STATE WRITE32 PC=0x{X:0>8} addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>8}\n",
+                .{ self.debug_cpu_pc, address, physical, value },
+            );
+        }
 
-        // I_STAT acknowledge: write clears acknowledged bits.
-        // Must be BEFORE generic 0x1F801000..0x1F8010FF handling.
+        if (false and physical >= 0x000D_61E8 and physical <= 0x000D_61EF) {
+            std.debug.print(
+                "BITMAP WRITE32 PC=0x{X:0>8} addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>8}\n",
+                .{ self.debug_cpu_pc, address, physical, value },
+            );
+        }
+
+        if (false and physical == 0x001F_FBAC) {
+            std.debug.print(
+                "STACK RA SLOT WRITE32 PC=0x{X:0>8} addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>8}\n",
+                .{ self.debug_cpu_pc, address, physical, value },
+            );
+        }
+
+        if (false and physical == 0x0007_9D9C) {
+            std.debug.print(
+                "WATCH 80079D9C WRITE32 PC=0x{X:0>8} addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>8}\n",
+                .{ self.debug_cpu_pc, address, physical, value },
+            );
+        }
+
         if (physical == 0x1F80_1070) {
             self.interrupt_status &= value;
             self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
 
-            std.debug.print(
-                "I_STAT WRITE32 PC=0x{X:0>8} value=0x{X:0>8} new_stat=0x{X:0>8}\n",
-                .{ self.debug_cpu_pc, value, self.interrupt_status },
-            );
+            if (debug_f.enable_irq_register_trace) {
+                std.debug.print(
+                    "I_STAT WRITE32 PC=0x{X:0>8} value=0x{X:0>8} new_stat=0x{X:0>8}\n",
+                    .{ self.debug_cpu_pc, value, self.interrupt_status },
+                );
+            }
 
             return;
         }
 
-        // I_MASK write.
-        // Must be BEFORE generic 0x1F801000..0x1F8010FF handling.
         if (physical == 0x1F80_1074) {
             self.interrupt_mask = value;
             self.hwWrite32Raw(0x1F80_1074, self.interrupt_mask);
 
-            std.debug.print(
-                "I_MASK WRITE32 PC=0x{X:0>8} value=0x{X:0>8} new_mask=0x{X:0>8}\n",
-                .{ self.debug_cpu_pc, value, self.interrupt_mask },
-            );
+            if (debug_f.enable_irq_register_trace) {
+                std.debug.print(
+                    "I_MASK WRITE32 PC=0x{X:0>8} value=0x{X:0>8} new_mask=0x{X:0>8}\n",
+                    .{ self.debug_cpu_pc, value, self.interrupt_mask },
+                );
+            }
 
             return;
         }
 
         // DMA2 GPU CHCR: complete immediately for now.
         if (physical == 0x1F80_10A8) {
+            // DMA2 GPU CHCR.
+            const started = (value & 0x0100_0000) != 0;
+
+            // Store original CHCR first so runDma2Gpu() can inspect direction/mode.
+            self.hwWrite32Raw(physical, value);
+
+            if (started) {
+                self.runDma2Gpu();
+            }
+
+            // Complete immediately for now.
             const completed_value = value & ~@as(u32, 0x0100_0000);
-
             self.hwWrite32Raw(physical, completed_value);
+            self.gpu.status |= 0x1C00_0000;
 
-            //std.debug.print(
-            //  "DMA2 CHCR WRITE32 PC=0x{X:0>8} value=0x{X:0>8} stored=0x{X:0>8}\n",
-            // .{ self.debug_cpu_pc, value, completed_value },
-            //);
+            if (started) {
+                // DMA2 IRQ flag: bit 26.
+                self.dma_dicr |= @as(u32, 1) << 26;
+
+                const dma_master_enable = (self.dma_dicr & (@as(u32, 1) << 23)) != 0;
+                const dma2_irq_enable = (self.dma_dicr & (@as(u32, 1) << 18)) != 0;
+
+                if (dma_master_enable and dma2_irq_enable) {
+                    // DICR master IRQ flag.
+                    self.dma_dicr |= @as(u32, 1) << 31;
+
+                    // I_STAT bit 3 = DMA.
+                    self.interrupt_status |= @as(u32, 1) << 3;
+                    self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
+                }
+            }
 
             return;
         }
+        if (physical == 0x1F80_10F4) {
+            const old_flags = self.dma_dicr & 0x7F00_0000;
+            const ack_flags = value & 0x7F00_0000;
+            const new_control = value & 0x00FF_FFFF;
 
-        // Generic memory-control / DMA register backing.
+            const new_flags = old_flags & ~ack_flags;
+
+            // Clear master flag if no channel IRQ flags remain.
+            if ((new_flags & 0x7F00_0000) == 0) {
+                self.dma_dicr = new_control;
+            } else {
+                self.dma_dicr = new_control | new_flags | (@as(u32, 1) << 31);
+            }
+
+            return;
+        }
+        if (physical == 0x1F80_1810) {
+            self.gpu.writeGp0(self.debug_cpu_pc, value);
+            return;
+        }
+        if (physical == 0x1F80_1814) {
+            self.gpu.writeGp1(self.debug_cpu_pc, value);
+            return;
+        }
+
+        // Generic mem-control registers.
+        // Keep this AFTER I_STAT/I_MASK/DMA special cases.
         if (physical >= 0x1F80_1000 and physical <= 0x1F80_10FF) {
             self.hwWrite32Raw(physical, value);
-
-            //std.debug.print(
-            //  "MEMCTRL WRITE32 PC=0x{X:0>8} addr=0x{X:0>8} value=0x{X:0>8}\n",
-            //.{ self.debug_cpu_pc, physical, value },
-            //);
-
             return;
         }
 
@@ -724,6 +1018,7 @@ pub const Bus = struct {
         self.write8(address + 2, @intCast((value >> 16) & 0x000000FF));
         self.write8(address + 3, @intCast((value >> 24) & 0x000000FF));
     }
+
     pub fn loadBios(self: *Bus, io: std.Io, path: []const u8) !void {
         if (self.bios) |old| {
             old.deinit();

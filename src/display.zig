@@ -22,8 +22,8 @@ pub const displayConfig = struct {
 
 pub fn displaySetConfig(displayconfig: *displayConfig) !void {
     displayconfig.* = .{
-        .windowWidth = 1280,
-        .windowHeight = 720,
+        .windowWidth = 640,
+        .windowHeight = 480,
         .foregroundColor = 0xFFFFFFFF,
         .backgroundColor = 0x000000FF,
     };
