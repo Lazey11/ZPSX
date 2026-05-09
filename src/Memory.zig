@@ -44,6 +44,7 @@ pub const Bus = struct {
 
     tick_count: u64 = 0,
     cycles_until_vblank: u64 = CPU_CYCLES_PER_FRAME,
+    cycles_until_hblank: u64 = CPU_CYCLES_PER_SCANLINE,
 
     allocator: std.mem.Allocator,
     ram: *Ram,
@@ -388,6 +389,16 @@ pub const Bus = struct {
         self.tick_count +%= 1;
 
         self.tickRootCounters();
+
+        if (self.cycles_until_hblank > 0) {
+            self.cycles_until_hblank -= 1;
+        }
+
+        if (self.cycles_until_hblank == 0) {
+            self.cycles_until_hblank = CPU_CYCLES_PER_SCANLINE;
+
+            // Later: HBlank event / counter 1 HBlank source.
+        }
 
         if (self.cycles_until_vblank > 0) {
             self.cycles_until_vblank -= 1;
@@ -1273,4 +1284,9 @@ const JOY_STAT: u32 = 0x1F80_1044;
 const JOY_MODE: u32 = 0x1F80_1048;
 const JOY_CTRL: u32 = 0x1F80_104A;
 const JOY_BAUD: u32 = 0x1F80_104E;
-pub const CPU_CYCLES_PER_FRAME: u64 = 33_868_800 / 60;
+pub const CPU_CLOCK_HZ: u64 = 33_868_800;
+pub const VIDEO_FPS: u64 = 60;
+pub const SCANLINES_PER_FRAME: u64 = 263;
+
+pub const CPU_CYCLES_PER_FRAME: u64 = CPU_CLOCK_HZ / VIDEO_FPS;
+pub const CPU_CYCLES_PER_SCANLINE: u64 = CPU_CYCLES_PER_FRAME / SCANLINES_PER_FRAME;
