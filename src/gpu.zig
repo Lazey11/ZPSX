@@ -50,6 +50,9 @@ pub const Gpu = struct {
     gp0_textured_quad_words: [8]u32 = [_]u32{0} ** 8,
     gp0_textured_quad_index: u8 = 0,
 
+    gp0_dot_color: u16 = 0,
+    gp0_dot_active: bool = false,
+
     draw_area_left: i32 = 0,
     draw_area_top: i32 = 0,
     draw_area_right: i32 = 1023,
@@ -237,6 +240,14 @@ pub const Gpu = struct {
         self.gp0_last = value;
         _ = pc;
 
+        if (self.gp0_dot_active) {
+            const x = xyX(value) + self.draw_offset_x;
+            const y = xyY(value) + self.draw_offset_y;
+            self.putPixel(x, y, self.gp0_dot_color);
+            self.gp0_dot_active = false;
+            return;
+        }
+
         if (self.gp0_textured_quad_active) {
             self.gp0_textured_quad_words[self.gp0_textured_quad_index] = value;
             self.gp0_textured_quad_index += 1;
@@ -368,8 +379,8 @@ pub const Gpu = struct {
             },
 
             0x68 => {
-                //  std.debug.print("GP0 DOT 0x68 value=0x{X:0>8}\n", .{value});
-                self.gp0_skip_words = 1;
+                self.gp0_dot_color = rgb24ToRgb555(value);
+                self.gp0_dot_active = true;
             },
 
             0x7C => {
@@ -457,6 +468,17 @@ pub const Gpu = struct {
         }
 
         self.image_index += 1;
+    }
+
+    fn putPixel(self: *Gpu, x: i32, y: i32, color: u16) void {
+        if (x < 0 or y < 0) return;
+        if (x > 1023 or y > 511) return;
+        if (x < self.draw_area_left or y < self.draw_area_top) return;
+        if (x > self.draw_area_right or y > self.draw_area_bottom) return;
+
+        const ux: u32 = @intCast(x);
+        const uy: u32 = @intCast(y);
+        self.vram[@intCast(uy * 1024 + ux)] = color;
     }
 
     fn rgb24ToRgb555(value: u32) u16 {
