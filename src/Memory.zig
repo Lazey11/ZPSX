@@ -46,6 +46,8 @@ pub const Bus = struct {
     cycles_until_vblank: u64 = CPU_CYCLES_PER_FRAME,
     cycles_until_hblank: u64 = CPU_CYCLES_PER_SCANLINE,
     hblank_pulse: bool = false,
+    dotclock_accum: u8 = 0,
+    dotclock_pulse: bool = false,
 
     allocator: std.mem.Allocator,
     ram: *Ram,
@@ -338,10 +340,10 @@ pub const Bus = struct {
     }
 
     fn shouldTickRootCounter0(self: *const Bus) bool {
-        _ = self;
-
-        // TODO: mode bit 8 selects dotclock for counter 0.
-        // For now, tick every CPU step as before.
+        const use_dotclock = (self.root_mode0 & (1 << 8)) != 0;
+        if (use_dotclock) {
+            return self.dotclock_pulse;
+        }
         return true;
     }
 
@@ -390,6 +392,13 @@ pub const Bus = struct {
         self.tick_count +%= 1;
         self.tickRootCounters();
         self.hblank_pulse = false;
+        self.dotclock_pulse = false;
+
+        self.dotclock_accum +%= 1;
+        if (self.dotclock_accum >= 5) {
+            self.dotclock_accum = 0;
+            self.dotclock_pulse = true;
+        }
 
         if (self.cycles_until_hblank > 0) {
             self.cycles_until_hblank -= 1;
