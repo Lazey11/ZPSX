@@ -28,7 +28,7 @@ pub const enable_irq_check_trace = false;
 pub const enable_bios_copy_progress = false;
 pub const enable_rfe_trace = false;
 pub const enable_irq_exception_trace = false;
-pub const enable_irq_register_trace = true;
+pub const enable_irq_register_trace = false;
 
 pub const enable_status_watch_trace = false;
 pub const enable_mtc0_trace = false;

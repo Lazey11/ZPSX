@@ -4,6 +4,7 @@ const display = @import("display.zig");
 const controls = @import("controls.zig");
 const bus_f = @import("Memory.zig");
 const cpu_f = @import("cpu.zig");
+const psxexe = @import("psxexe.zig");
 
 const steps_per_frame: usize = 565_000;
 const enable_fps_log = false;
@@ -24,7 +25,12 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(allocator);
     try bus.loadBios(init.io, args[1]);
 
+    if (args.len >= 3) {
+        try bus.cdrom.loadBin(init.io, args[2]);
+    }
+
     var cpu = cpu_f.Cpu.init(bus);
+    var loaded_exe = false;
     defer cpu.deinit();
 
     var fps_frame_count: u32 = 0;
@@ -37,6 +43,11 @@ pub fn main(init: std.process.Init) !void {
         var i: usize = 0;
         while (i < steps_per_frame) : (i += 1) {
             cpu.step(false);
+        }
+
+        if (!loaded_exe and args.len >= 3 and cpu.instruction_count > 25_000_000) {
+            try psxexe.loadPsExe(allocator, init.io, bus, &cpu, args[2]);
+            loaded_exe = true;
         }
 
         try display.clearScreen(&sdl, config);

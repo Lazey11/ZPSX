@@ -2,6 +2,8 @@ const std = @import("std");
 const BIOS = @import("bios.zig");
 const debug_f = @import("debug.zig");
 const gpu_f = @import("gpu.zig");
+const cdrom_f = @import("cdrom.zig");
+
 pub const MEMORY_MASK_REGION = [_]u32{
     0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, //KUSEG
     0x7fffffff, //KUSEG0
@@ -37,6 +39,8 @@ pub const Ram = struct {
 };
 
 pub const Bus = struct {
+    cdrom: cdrom_f.Cdrom,
+
     tick_count: u64 = 0,
 
     allocator: std.mem.Allocator,
@@ -76,6 +80,7 @@ pub const Bus = struct {
         self.* = .{
             .allocator = allocator,
             .ram = Ram.init(allocator),
+            .cdrom = cdrom_f.Cdrom.init(allocator),
         };
         self.hwWrite32Raw(0x1F80_1060, 0x00000B88);
         self.hwWrite32Raw(0x1F80_10E0, 0x0000_0000);
@@ -92,6 +97,7 @@ pub const Bus = struct {
         }
         self.ram.deinit();
         self.allocator.destroy(self);
+        self.cdrom.deinit();
     }
 
     pub const Spu = struct {
