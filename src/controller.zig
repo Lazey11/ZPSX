@@ -1,5 +1,3 @@
-const std = @import("std");
-
 pub const Button = enum {
     Select,
     Start,
@@ -25,7 +23,9 @@ pub const Controller = struct {
     joy_baud: u16 = 0,
 
     selected: bool = false,
-    read_index: u8 = 0,
+
+    transaction_active: bool = false,
+    phase: u8 = 0,
 
     pub fn setButton(self: *Controller, button: Button, pressed: bool) void {
         const mask: u16 = switch (button) {
@@ -53,13 +53,32 @@ pub const Controller = struct {
     }
 
     pub fn writeData(self: *Controller, value: u8) void {
-        if (value == 0x01 and self.read_index >= 5) {
-            self.read_index = 0;
+        if (!self.selected) {
+            self.transaction_active = false;
+            self.phase = 0;
+            return;
+        }
+
+        switch (value) {
+            0x01 => {
+                self.transaction_active = true;
+                self.phase = 0;
+            },
+
+            0x42 => {
+                self.transaction_active = true;
+                self.phase = 1;
+            },
+
+            else => {},
         }
     }
-
     pub fn readData(self: *Controller) u8 {
-        const value: u8 = switch (self.read_index) {
+        if (!self.selected or !self.transaction_active) {
+            return 0xFF;
+        }
+
+        const value: u8 = switch (self.phase) {
             0 => 0xFF,
             1 => 0x41,
             2 => 0x5A,
@@ -68,11 +87,13 @@ pub const Controller = struct {
             else => 0xFF,
         };
 
-        //std.debug.print(
-        //  .{ value, self.read_index, self.selected },
-        // );
+        self.phase +%= 1;
 
-        self.read_index +%= 1;
+        if (self.phase > 5) {
+            self.transaction_active = false;
+            self.phase = 0;
+        }
+
         return value;
     }
 
@@ -96,14 +117,13 @@ pub const Controller = struct {
     }
 
     pub fn writeCtrl(self: *Controller, value: u16) void {
-        //std.debug.print("JOY writeCtrl value=0x{X:0>4}\n", .{value});
-
         self.joy_ctrl = value;
         self.selected = (value & 0x0002) != 0;
 
-        // if ((value & 0x0040) != 0) {
-        //     self.read_index = 0;
-        // }
+        if ((value & 0x0040) != 0) {
+            self.transaction_active = false;
+            self.phase = 0;
+        }
     }
 
     pub fn readBaud(self: *const Controller) u16 {
