@@ -233,6 +233,7 @@ pub const Gpu = struct {
     }
 
     pub fn writeGp0(self: *Gpu, pc: u32, value: u32) void {
+        const cmd: u8 = @intCast(value >> 24);
         self.gp0_last = value;
         _ = pc;
 
@@ -332,8 +333,6 @@ pub const Gpu = struct {
 
             else => {},
         }
-
-        const cmd: u8 = @intCast(value >> 24);
 
         switch (cmd) {
             0x00 => {}, // NOP

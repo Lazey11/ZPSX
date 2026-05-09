@@ -7,7 +7,7 @@ const cpu_f = @import("cpu.zig");
 const psxexe = @import("psxexe.zig");
 
 const steps_per_frame: usize = @intCast(bus_f.CPU_CYCLES_PER_FRAME);
-const exe_load_after_instructions: u64 = 100_000_000;
+const exe_load_after_instructions: u64 = 25_000_000;
 const enable_fps_log = false;
 
 pub fn main(init: std.process.Init) !void {
@@ -61,6 +61,7 @@ pub fn main(init: std.process.Init) !void {
         while (i < steps_per_frame) : (i += 1) {
             cpu.step(false);
         }
+
         if (delayed_exe_load and !loaded_exe and cpu.instruction_count >= exe_load_after_instructions) {
             try psxexe.loadPsExe(allocator, init.io, bus, &cpu, args[2]);
             loaded_exe = true;

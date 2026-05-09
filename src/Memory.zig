@@ -264,6 +264,7 @@ pub const Bus = struct {
         const offset: usize = @intCast(physical - Ram.Start);
         self.ram.data[offset] = value;
     }
+
     fn readRootCounter16(self: *Bus, physical: u32) ?u16 {
         return switch (physical) {
             0x1F80_1100 => self.root_counter0,
@@ -390,7 +391,7 @@ pub const Bus = struct {
 
     pub fn tick(self: *Bus) void {
         self.tick_count +%= 1;
-        self.tickRootCounters();
+
         self.hblank_pulse = false;
         self.dotclock_pulse = false;
 
@@ -408,6 +409,8 @@ pub const Bus = struct {
             self.cycles_until_hblank = CPU_CYCLES_PER_SCANLINE;
             self.hblank_pulse = true;
         }
+
+        self.tickRootCounters();
 
         if (self.cycles_until_vblank > 0) {
             self.cycles_until_vblank -= 1;
@@ -979,7 +982,7 @@ pub const Bus = struct {
 
             if (physical >= Cdrom.Start and physical <= Cdrom.End) {
                 const offset: u2 = @intCast(physical - Cdrom.Start);
-                self.cdrom.writerRegister(offset, value);
+                self.cdrom.writeRegister(offset, value);
                 return;
             }
 
@@ -1057,6 +1060,7 @@ pub const Bus = struct {
 
             return;
         }
+
         if (physical >= 0x1F80_1100 and physical <= 0x1F80_112B) {
             if (self.writeRootCounter16(physical, value)) {
                 self.hwWrite8Raw(physical, @intCast(value & 0x00FF));

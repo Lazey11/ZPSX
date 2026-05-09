@@ -40,7 +40,7 @@ pub const Cdrom = struct {
         };
     }
 
-    pub fn writerRegister(self: *Cdrom, offset: u2, value: u8) void {
+    pub fn writeRegister(self: *Cdrom, offset: u2, value: u8) void {
         switch (offset) {
             0 => self.index = value & 0x03,
             1 => self.command(value),
