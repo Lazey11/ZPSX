@@ -324,9 +324,31 @@ pub const Bus = struct {
         }
     }
     fn tickRootCounters(self: *Bus) void {
-        self.tickRootCounter(&self.root_counter0, self.root_mode0, self.root_target0, 4);
-        self.tickRootCounter(&self.root_counter1, self.root_mode1, self.root_target1, 5);
+        if (self.shouldTickRootCounter0()) {
+            self.tickRootCounter(&self.root_counter0, self.root_mode0, self.root_target0, 4);
+        }
+
+        if (self.shouldTickRootCounter1()) {
+            self.tickRootCounter(&self.root_counter1, self.root_mode1, self.root_target1, 5);
+        }
+
         self.tickRootCounter(&self.root_counter2, self.root_mode2, self.root_target2, 6);
+    }
+
+    fn shouldTickRootCounter0(self: *const Bus) bool {
+        _ = self;
+
+        // TODO: mode bit 8 selects dotclock for counter 0.
+        // For now, tick every CPU step as before.
+        return true;
+    }
+
+    fn shouldTickRootCounter1(self: *const Bus) bool {
+        _ = self;
+
+        // TODO: mode bit 8 selects HBlank for counter 1.
+        // For now, tick every CPU step as before.
+        return true;
     }
 
     fn tickRootCounter(
