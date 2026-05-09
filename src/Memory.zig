@@ -74,7 +74,7 @@ pub const Bus = struct {
 
     root_target0: u16 = 0xFFFF,
     root_target1: u16 = 0xFFFF,
-    root_target2: u16 = 0xFFFF,
+    root_target2: u16 = 0x0000,
 
     pub fn init(allocator: std.mem.Allocator) *@This() {
         const self = allocator.create(@This()) catch @panic("failed to allocate Bus");
@@ -325,18 +325,31 @@ pub const Bus = struct {
     }
 
     fn tickRootCounters(self: *Bus) void {
+        self.tickRootCounters2();
         self.root_counter0 +%= 1;
         self.root_counter1 +%= 1;
+    }
+    fn tickRootCounters2(self: *Bus) void {
         self.root_counter2 +%= 1;
 
-        if (self.root_counter0 == self.root_target0) {
-            self.root_counter0 = 0;
-        }
-        if (self.root_counter1 == self.root_target1) {
-            self.root_counter1 = 0;
-        }
+        const reset_on_target = (self.root_mode2 & (1 << 3) != 0);
+        const irq_on_target = (self.root_mode2 & (1 << 4) != 0);
+
         if (self.root_counter2 == self.root_target2) {
-            self.root_counter2 = 0;
+            if (irq_on_target) {
+                self.interrupt_status |= 1 << 6;
+                self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
+            }
+            if (reset_on_target) {
+                self.root_counter2 = 0;
+            }
+        }
+        if (self.root_counter2 == 0) {
+            const irq_on_overflow = (self.root_mode2 & (1 << 5)) != 0;
+            if (irq_on_overflow) {
+                self.interrupt_status |= 1 << 6;
+                self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
+            }
         }
     }
 
