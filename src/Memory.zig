@@ -323,27 +323,27 @@ pub const Bus = struct {
             self.ramWrite32Physical(vblank_entry, state | 0x0000_1000);
         }
     }
-    pub fn tick(self: *Bus) void {
-        self.tick_count +%= 1;
 
+    fn tickRootCounters(self: *Bus) void {
         self.root_counter0 +%= 1;
         self.root_counter1 +%= 1;
         self.root_counter2 +%= 1;
 
         if (self.root_counter0 == self.root_target0) {
-            //self.interrupt_status |= 1 << 4;
             self.root_counter0 = 0;
         }
-
         if (self.root_counter1 == self.root_target1) {
-            //self.interrupt_status |= 1 << 5;
             self.root_counter1 = 0;
         }
-
         if (self.root_counter2 == self.root_target2) {
-            // self.interrupt_status |= 1 << 6;
             self.root_counter2 = 0;
         }
+    }
+
+    pub fn tick(self: *Bus) void {
+        self.tick_count +%= 1;
+
+        self.tickRootCounters();
 
         if (self.cycles_until_vblank > 0) {
             self.cycles_until_vblank -= 1;
