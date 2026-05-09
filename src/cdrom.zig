@@ -1,6 +1,14 @@
 const std = @import("std");
 
 pub const Cdrom = struct {
+    index: u8 = 0,
+    status: u8 = 0x18,
+    interrupt_enable: u8 = 0,
+    interrupt_flag: u8 = 0,
+    response_fifo: [16]u8 = [_]u8{0} ** 16,
+    response_len: u8 = 0,
+    response_index: u8 = 0,
+
     allocator: std.mem.Allocator,
     data: []u8 = &[_]u8{},
 
@@ -15,6 +23,64 @@ pub const Cdrom = struct {
         if (self.data.len != 0) {
             self.allocator.free(self.data);
             self.data = &[_]u8{};
+        }
+    }
+
+    pub fn readRegister(self: *Cdrom, offset: u2) u8 {
+        return switch (offset) {
+            0 => (self.status & 0xFC) | (self.index & 0x03),
+            1 => self.popResponse(),
+            2 => self.interrupt_enable,
+            3 => self.interrupt_flag,
+        };
+    }
+
+    pub fn writerRegister(self: *Cdrom, offset: u2, value: u8) void {
+        switch (offset) {
+            0 => self.index = value & 0x03,
+            1 => self.command(value),
+            2 => self.interrupt_enable = value,
+            3 => self.interrupt_flag &= ~value,
+        }
+    }
+
+    fn clearResponse(self: *Cdrom) void {
+        self.response_len = 0;
+        self.response_index = 0;
+    }
+
+    fn pushResponse(self: *Cdrom, value: u8) void {
+        if (self.response_len >= self.response_fifo.len) return;
+        self.response_fifo[self.response_len] = value;
+        self.response_len += 1;
+    }
+
+    fn popResponse(self: *Cdrom) u8 {
+        if (self.response_index >= self.response_len) return 0x00;
+        const value = self.response_fifo[self.response_index];
+        self.response_index += 1;
+        return value;
+    }
+
+    fn command(self: *Cdrom, value: u8) void {
+        self.clearResponse();
+
+        switch (value) {
+            0x19 => {
+                self.pushResponse(0x94);
+                self.pushResponse(0x09);
+                self.pushResponse(0x19);
+                self.pushResponse(0xC0);
+                self.interrupt_flag |= 0x03;
+            },
+            0x01 => {
+                self.pushResponse(0x02);
+                self.interrupt_flag |= 0x03;
+            },
+            else => {
+                self.pushResponse(0x00);
+                self.interrupt_flag |= 0x05;
+            },
         }
     }
 
