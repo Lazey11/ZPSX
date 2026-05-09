@@ -43,6 +43,7 @@ pub const Bus = struct {
     cdrom: cdrom_f.Cdrom,
 
     tick_count: u64 = 0,
+    cycles_until_vblank: u64 = CPU_CYCLES_PER_FRAME,
 
     allocator: std.mem.Allocator,
     ram: *Ram,
@@ -61,7 +62,6 @@ pub const Bus = struct {
 
     gpu: gpu_f.Gpu = .{},
     controller: controller_f.Controller = .{},
-
     dma_dicr: u32 = 0,
 
     root_counter0: u16 = 0,
@@ -345,18 +345,18 @@ pub const Bus = struct {
             self.root_counter2 = 0;
         }
 
-        if ((self.tick_count % 500_000) == 0) {
-            // Advance the kernel/game VBlank counter every fake frame.
-            // Do this even if I_STAT bit 0 is already pending.
+        if (self.cycles_until_vblank > 0) {
+            self.cycles_until_vblank -= 1;
+        }
+
+        if (self.cycles_until_vblank == 0) {
+            self.cycles_until_vblank = CPU_CYCLES_PER_FRAME;
+
             self.signalKernelVblankWord();
 
             if ((self.interrupt_status & 1) == 0) {
                 self.interrupt_status |= 1;
             }
-        }
-        if (false and (self.tick_count % 2_000_000) == 1) {
-            self.interrupt_status &= ~@as(u32, 1);
-            self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
         }
     }
     pub fn hwOffSet(physical: u32) usize {
@@ -426,9 +426,6 @@ pub const Bus = struct {
 
     pub fn read8(self: *Bus, address: u32) u8 {
         const physical = maskRegion(address);
-
-        //if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
-        //}
 
         if (physical >= Ram.Start and physical <= Ram.End) {
             const offset: usize = @intCast(physical - Ram.Start);
@@ -556,8 +553,6 @@ pub const Bus = struct {
         }
 
         const physical = maskRegion(address);
-        // if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
-        //}
 
         if (physical == JOY_STAT) {
             return self.controller.readStat();
@@ -788,8 +783,6 @@ pub const Bus = struct {
 
     pub fn write8(self: *Bus, address: u32, value: u8) void {
         const physical = maskRegion(address);
-        // if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
-        // }
 
         if (false and physical >= 0x000D_61E8 and physical <= 0x000D_61EF) {
             std.debug.print(
@@ -950,8 +943,6 @@ pub const Bus = struct {
         }
 
         const physical = maskRegion(address);
-        //if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
-        //  }
 
         if (physical == JOY_MODE) {
             self.controller.writeMode(value);
@@ -1238,3 +1229,4 @@ const JOY_STAT: u32 = 0x1F80_1044;
 const JOY_MODE: u32 = 0x1F80_1048;
 const JOY_CTRL: u32 = 0x1F80_104A;
 const JOY_BAUD: u32 = 0x1F80_104E;
+const CPU_CYCLES_PER_FRAME: u64 = 33_868_800 / 60;

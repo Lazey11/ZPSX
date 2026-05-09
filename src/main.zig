@@ -7,7 +7,7 @@ const cpu_f = @import("cpu.zig");
 const psxexe = @import("psxexe.zig");
 
 const steps_per_frame: usize = 565_000;
-const exe_load_after_instructions: u64 = 50_000_000;
+const exe_load_after_instructions: u64 = 100_000_000;
 const enable_fps_log = false;
 
 pub fn main(init: std.process.Init) !void {

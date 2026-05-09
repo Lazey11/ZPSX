@@ -8,6 +8,13 @@ fn readLe32(data: []const u8) u32 {
         (@as(u32, data[2]) << 16) |
         (@as(u32, data[3]) << 24);
 }
+fn isValidRamStack(sp: u32) bool {
+    const physical = sp & 0x1F_FFFF;
+
+    return ((sp >= 0x8000_0000 and sp <= 0x801F_FFFF) or
+        (sp >= 0xA000_0000 and sp <= 0xA01F_FFFF)) and
+        physical >= 0x1000;
+}
 
 pub fn loadPsExe(
     allocator: std.mem.Allocator,
@@ -58,9 +65,9 @@ pub fn loadPsExe(
 
     if (sp_base != 0) {
         cpu.regs[29] = sp_base +% sp_offset;
+    } else if (!isValidRamStack(cpu.regs[29])) {
+        cpu.regs[29] = 0x801F_FF00;
     }
-    // If PS-EXE header stack is zero, keep the current CPU stack.
-    // Some BIOS/libps tests rely on the BIOS/runtime stack already being valid.
     std.debug.print(
         "Loaded PS-EXE {s}: pc=0x{X:0>8} dest=0x{X:0>8} size=0x{X} sp=0x{X:0>8}\n",
         .{ path, pc, dest, size, cpu.regs[29] },
