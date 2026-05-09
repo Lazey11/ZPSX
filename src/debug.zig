@@ -37,6 +37,8 @@ pub const enable_gpu_loop59_trace = false;
 pub const enable_loop541_trace = false;
 pub const enable_a100_trace = false;
 
+pub const enable_cdrom_trace = false;
+
 pub fn getInput(init: std.process.Init) !bool {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
 

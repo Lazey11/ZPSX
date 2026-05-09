@@ -1,4 +1,5 @@
 const std = @import("std");
+const debug_f = @import("debug.zig");
 
 pub const Cdrom = struct {
     index: u8 = 0,
@@ -136,6 +137,12 @@ pub const Cdrom = struct {
                 self.interrupt_flag |= 0x03;
             },
             else => {
+                if (debug_f.enable_cdrom_trace) {
+                    std.debug.print(
+                        "CDROM unknown command=0x{X:0>2} params_len={}\n",
+                        .{ value, self.parameter_len },
+                    );
+                }
                 self.pushResponse(0x00);
                 self.interrupt_flag |= 0x05;
             },
