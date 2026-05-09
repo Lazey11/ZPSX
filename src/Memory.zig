@@ -45,6 +45,7 @@ pub const Bus = struct {
     tick_count: u64 = 0,
     cycles_until_vblank: u64 = CPU_CYCLES_PER_FRAME,
     cycles_until_hblank: u64 = CPU_CYCLES_PER_SCANLINE,
+    hblank_pulse: bool = false,
 
     allocator: std.mem.Allocator,
     ram: *Ram,
@@ -345,10 +346,10 @@ pub const Bus = struct {
     }
 
     fn shouldTickRootCounter1(self: *const Bus) bool {
-        _ = self;
-
-        // TODO: mode bit 8 selects HBlank for counter 1.
-        // For now, tick every CPU step as before.
+        const use_hblank_clock = (self.root_mode1 & (1 << 8)) != 0;
+        if (use_hblank_clock) {
+            return self.hblank_pulse;
+        }
         return true;
     }
 
@@ -387,8 +388,8 @@ pub const Bus = struct {
 
     pub fn tick(self: *Bus) void {
         self.tick_count +%= 1;
-
         self.tickRootCounters();
+        self.hblank_pulse = false;
 
         if (self.cycles_until_hblank > 0) {
             self.cycles_until_hblank -= 1;
@@ -396,8 +397,7 @@ pub const Bus = struct {
 
         if (self.cycles_until_hblank == 0) {
             self.cycles_until_hblank = CPU_CYCLES_PER_SCANLINE;
-
-            // Later: HBlank event / counter 1 HBlank source.
+            self.hblank_pulse = true;
         }
 
         if (self.cycles_until_vblank > 0) {
