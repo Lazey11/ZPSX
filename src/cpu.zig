@@ -197,6 +197,7 @@ pub const Cpu = struct {
         }
     }
     fn tracePcProgress(self: *const @This()) void {
+        if (!debug_f.enable_pc_progress_trace) return;
         if (self.instruction_count % 1_000_000 != 0) return;
 
         std.debug.print(
@@ -259,27 +260,6 @@ pub const Cpu = struct {
             );
         }
 
-        if ((current_pc >= 0x0000_3000 and current_pc <= 0x0000_3150) or
-            (current_pc >= 0x0000_3E80 and current_pc <= 0x0000_3F10))
-        {
-            std.debug.print(
-                "EVENT_API PC=0x{X:0>8} raw=0x{X:0>8} v0=0x{X:0>8} v1=0x{X:0>8} a0=0x{X:0>8} a1=0x{X:0>8} a2=0x{X:0>8} a3=0x{X:0>8} t0=0x{X:0>8} t1=0x{X:0>8} sp=0x{X:0>8} ra=0x{X:0>8}\n",
-                .{
-                    current_pc,
-                    instr.raw,
-                    self.regs[2],
-                    self.regs[3],
-                    self.regs[4],
-                    self.regs[5],
-                    self.regs[6],
-                    self.regs[7],
-                    self.regs[8],
-                    self.regs[9],
-                    self.regs[29],
-                    self.regs[31],
-                },
-            );
-        }
         if (debug_f.enable_event_core_trace and current_pc >= 0x0000_2CDC and current_pc <= 0x0000_3F10) {
             std.debug.print(
                 "EVENT_CORE PC=0x{X:0>8} raw=0x{X:0>8} pc_next=0x{X:0>8} v0=0x{X:0>8} v1=0x{X:0>8} a0=0x{X:0>8} a1=0x{X:0>8} a2=0x{X:0>8} a3=0x{X:0>8} t0=0x{X:0>8} t1=0x{X:0>8} t2=0x{X:0>8} t3=0x{X:0>8} sp=0x{X:0>8} ra=0x{X:0>8}\n",
@@ -640,13 +620,6 @@ pub const Cpu = struct {
 
         const value = self.regs[rs] +% instr.immSignedU32();
         self.setReg(rt, value);
-
-        if (rt == 31) {
-            std.debug.print(
-                "RA WRITE ADDIU PC=0x{X:0>8} raw=0x{X:0>8} new_ra=0x{X:0>8}\n",
-                .{ self.current_pc, instr.raw, value },
-            );
-        }
     }
 
     pub fn opAddu(self: *@This(), instr: Instruction) void {
@@ -656,13 +629,6 @@ pub const Cpu = struct {
 
         const value = self.regs[rs] +% self.regs[rt];
         self.setReg(rd, value);
-
-        if (rd == 31) {
-            std.debug.print(
-                "RA WRITE ADDU PC=0x{X:0>8} raw=0x{X:0>8} new_ra=0x{X:0>8}\n",
-                .{ self.current_pc, instr.raw, value },
-            );
-        }
     }
 
     pub fn opAnd(self: *@This(), instr: Instruction) void {
@@ -705,15 +671,7 @@ pub const Cpu = struct {
         const rt: usize = @intCast(instr.rt());
         const rd: usize = @intCast(instr.rd());
 
-        const value = self.regs[rs] | self.regs[rt];
-        self.setReg(rd, value);
-
-        if (rd == 31) {
-            std.debug.print(
-                "RA WRITE OR PC=0x{X:0>8} raw=0x{X:0>8} new_ra=0x{X:0>8}\n",
-                .{ self.current_pc, instr.raw, value },
-            );
-        }
+        self.setReg(rd, self.regs[rs] | self.regs[rt]);
     }
 
     pub fn opOri(self: *@This(), instr: Instruction) void {
@@ -852,7 +810,7 @@ pub const Cpu = struct {
             );
         }
 
-        if (target == 0xBFC01920) {
+        if (debug_f.enable_bios_vector_trace and target == 0xBFC01920) {
             std.debug.print(
                 "ENTER BFC01920 via JR at PC=0x{X:0>8}, r9/function=0x{X:0>2}, RA=0x{X:0>8}\n",
                 .{ self.current_pc, self.regs[9], self.regs[31] },

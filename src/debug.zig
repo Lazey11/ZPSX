@@ -2,7 +2,9 @@ const std = @import("std");
 const cpu_f = @import("cpu.zig");
 const debugPanic = std.debug.panic;
 const debugPrint = std.debug.print;
-
+pub const enable_pc_progress_trace = false;
+pub const enable_unknown_hw_trace = false;
+pub const enable_dma_trace = false;
 pub const enable_event_loop_trace = false;
 pub const enable_event_mem_trace = false;
 

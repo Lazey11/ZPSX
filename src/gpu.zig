@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const Gpu = struct {
     pub const GP0: u32 = 0x1F80_1810;
     pub const GP1: u32 = 0x1F80_1814;
@@ -233,13 +235,13 @@ pub const Gpu = struct {
     pub fn writeGp0(self: *Gpu, pc: u32, value: u32) void {
         self.gp0_last = value;
         _ = pc;
+
         if (self.gp0_textured_quad_active) {
             self.gp0_textured_quad_words[self.gp0_textured_quad_index] = value;
             self.gp0_textured_quad_index += 1;
 
             if (self.gp0_textured_quad_index == 8) {
                 self.drawTexturedQuad2C();
-
                 self.gp0_textured_quad_active = false;
                 self.gp0_textured_quad_index = 0;
             }

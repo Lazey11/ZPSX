@@ -5,6 +5,8 @@ const controls = @import("controls.zig");
 const bus_f = @import("Memory.zig");
 const cpu_f = @import("cpu.zig");
 
+const steps_per_frame: usize = 565_000;
+const enable_fps_log = false;
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
 
@@ -32,7 +34,6 @@ pub fn main(init: std.process.Init) !void {
     while (emu_state != .Quit) {
         try controls.inputControls(&emu_state);
 
-        const steps_per_frame: usize = 250_000;
         var i: usize = 0;
         while (i < steps_per_frame) : (i += 1) {
             cpu.step(false);
@@ -41,30 +42,26 @@ pub fn main(init: std.process.Init) !void {
         try display.clearScreen(&sdl, config);
         try display.drawVramToScreen(&sdl, &config, &bus.gpu);
         try display.updateScreen(&sdl, &config);
+        if (enable_fps_log) {
+            fps_frame_count += 1;
+            const now_ms: u64 = C.SDL_GetTicks();
+            const elapsed_ms = now_ms - fps_last_time_ms;
 
-        fps_frame_count += 1;
+            if (elapsed_ms >= 1000) {
+                const instruction_delta = cpu.instruction_count - fps_last_instruction_count;
+                const instr_per_sec = (instruction_delta * 1000) / elapsed_ms;
 
-        const now_ms: u64 = C.SDL_GetTicks();
-        const elapsed_ms = now_ms - fps_last_time_ms;
+                std.debug.print(
+                    "FPS={} elapsed_ms={} instr_per_sec={} total_instr={}\n",
+                    .{ fps_frame_count, elapsed_ms, instr_per_sec, cpu.instruction_count },
+                );
 
-        if (elapsed_ms >= 1000) {
-            const instruction_delta = cpu.instruction_count - fps_last_instruction_count;
-
-            std.debug.print(
-                "FPS={} elapsed_ms={} instr_per_sec={} total_instr={}\n",
-                .{
-                    fps_frame_count,
-                    elapsed_ms,
-                    instruction_delta * 1000 / elapsed_ms,
-                    cpu.instruction_count,
-                },
-            );
-
-            fps_frame_count = 0;
-            fps_last_time_ms = now_ms;
-            fps_last_instruction_count = cpu.instruction_count;
+                fps_frame_count = 0;
+                fps_last_time_ms = now_ms;
+                fps_last_instruction_count = cpu.instruction_count;
+            }
         }
 
-        C.SDL_Delay(1);
+        C.SDL_Delay(16);
     }
 }

@@ -160,11 +160,12 @@ pub const Bus = struct {
         const block_count = (bcr >> 16) & 0xFFFF;
         const words = if (block_count == 0) block_size else block_size * block_count;
 
-        std.debug.print(
-            "DMA2 GPU block madr=0x{X:0>8} bcr=0x{X:0>8} chcr=0x{X:0>8} words={}\n",
-            .{ madr, bcr, chcr, words },
-        );
-
+        if (debug_f.enable_dma_trace) {
+            std.debug.print(
+                "DMA2 GPU block madr=0x{X:0>8} bcr=0x{X:0>8} chcr=0x{X:0>8} words={}\n",
+                .{ madr, bcr, chcr, words },
+            );
+        }
         var addr = madr & 0x001F_FFFC;
         var i: u32 = 0;
         while (i < words) : (i += 1) {
@@ -215,6 +216,28 @@ pub const Bus = struct {
         _ = value;
         _ = bits;
         return;
+    }
+    fn runDma6Otc(self: *Bus) void {
+        const madr = self.hwRead32Raw(0x1F80_10E0);
+        const bcr = self.hwRead32Raw(0x1F80_10E4);
+
+        var addr = madr & 0x001F_FFFC;
+        var count = bcr & 0xFFFF;
+
+        //std.debug.print(
+        //"DMA6 OTC madr=0x{X:0>8} bcr=0x{X:0>8} count={}\n",
+        //  .{ madr, bcr, count },
+        //);
+
+        while (count > 0) : (count -= 1) {
+            const value: u32 = if (count == 1)
+                0x00FF_FFFF
+            else
+                (addr -% 4) & 0x001F_FFFC;
+
+            self.ramWrite32Physical(addr, value);
+            addr = (addr -% 4) & 0x001F_FFFC;
+        }
     }
     fn signalKernelVblankWord(self: *Bus) void {
         const physical: u32 = 0x0007_9D9C;
@@ -372,10 +395,12 @@ pub const Bus = struct {
         value: ?u32,
         size: u8,
     ) void {
+        if (!debug_f.enable_unknown_hw_trace) return;
         if (isKnownHwRegister(physical)) return;
         if (self.unknown_hw_log_count >= 256) return;
 
         self.unknown_hw_log_count += 1;
+
         if (value) |v| {
             std.debug.print(
                 "HW {s}{} PC=0x{X:0>8} addr=0x{X:0>8} physical=0x{X:0>8} value=0x{X:0>8}\n",
@@ -468,7 +493,7 @@ pub const Bus = struct {
 
             self.traceUnknownHw("READ", address, physical, null, 8);
             const value = self.hwRead8Raw(physical);
-            if (isMemControlE0Range(physical)) {
+            if (debug_f.enable_unknown_hw_trace and isMemControlE0Range(physical)) {
                 std.debug.print(
                     "MEMCTRL READ8 PC=0x{X:0>8} addr=0x{X:0>8} value=0x{X:0>2}\n",
                     .{ self.debug_cpu_pc, physical, value },
@@ -655,7 +680,7 @@ pub const Bus = struct {
         }
 
         if (physical == 0x1F80_1810) {
-            return self.gpu.gp0_last;
+            return self.gpu.readGP0();
         }
 
         if (physical == 0x1F80_1814) {
@@ -727,7 +752,7 @@ pub const Bus = struct {
         if (physical >= HardwareRegisters.Start and physical <= HardwareRegisters.End) {
             // Generic backing first. This lets BIOS config write/read checks pass.
             self.hwWrite8Raw(physical, value);
-            if (isMemControlE0Range(physical)) {
+            if (debug_f.enable_unknown_hw_trace and isMemControlE0Range(physical)) {
                 std.debug.print(
                     "MEMCTRL WRITE8 PC=0x{X:0>8} addr=0x{X:0>8} value=0x{X:0>2}\n",
                     .{ self.debug_cpu_pc, physical, value },
@@ -935,6 +960,20 @@ pub const Bus = struct {
                     .{ self.debug_cpu_pc, value, self.interrupt_mask },
                 );
             }
+
+            return;
+        }
+        if (physical == 0x1F80_10E8) {
+            const started = (value & 0x0100_0000) != 0;
+
+            self.hwWrite32Raw(physical, value);
+
+            if (started) {
+                self.runDma6Otc();
+            }
+
+            const completed_value = value & ~@as(u32, 0x0100_0000);
+            self.hwWrite32Raw(physical, completed_value);
 
             return;
         }
