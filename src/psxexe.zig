@@ -1,64 +1,93 @@
 const std = @import("std");
-const Bus = @import("Memory.zig");
-const Cpu = @import("cpu.zig");
+const bus_f = @import("Memory.zig");
+const cpu_f = @import("cpu.zig");
 
-fn readLe32(data: []const u8, off: usize) u32 {
-    return @as(u32, data[off]) |
-        (@as(u32, data[off + 1]) << 8) |
-        (@as(u32, data[off + 2]) << 16) |
-        (@as(u32, data[off + 3]) << 24);
+fn readLe32(data: []const u8) u32 {
+    return @as(u32, data[0]) |
+        (@as(u32, data[1]) << 8) |
+        (@as(u32, data[2]) << 16) |
+        (@as(u32, data[3]) << 24);
 }
 
 pub fn loadPsExe(
     allocator: std.mem.Allocator,
     io: std.Io,
-    bus: *Bus.Bus,
-    cpu: *Cpu.Cpu,
+    bus: *bus_f.Bus,
+    cpu: *cpu_f.Cpu,
     path: []const u8,
 ) !void {
     var file = try std.Io.Dir.cwd().openFile(io, path, .{});
     defer file.close(io);
 
     const stat = try file.stat(io);
-    const data = try allocator.alloc(u8, @intCast(stat.size));
-    defer allocator.free(data);
+    const file_size: usize = @intCast(stat.size);
 
-    var reader_buffer: [4096]u8 = undefined;
-    var file_reader = file.reader(io, &reader_buffer);
+    const file_data = try allocator.alloc(u8, file_size);
+    defer allocator.free(file_data);
+
+    var buffer: [4096]u8 = undefined;
+    var file_reader = file.reader(io, &buffer);
     const reader = &file_reader.interface;
-    try reader.readSliceAll(data);
+    try reader.readSliceAll(file_data);
 
-    if (data.len < 0x800) return error.BadPsExe;
-    if (!std.mem.eql(u8, data[0..8], "PS-X EXE")) return error.BadPsExeMagic;
-
-    const initial_pc = readLe32(data, 0x10);
-    const dest = readLe32(data, 0x18);
-    const size = readLe32(data, 0x1C);
-    const sp_base = readLe32(data, 0x30);
-    const sp_offset = readLe32(data, 0x34);
-
-    if (0x800 + size > data.len) return error.BadPsExeSize;
-
-    var i: u32 = 0;
-    while (i < size) : (i += 1) {
-        const addr = Bus.maskRegion(dest +% i);
-        bus.ramWrite8Physical(addr, data[0x800 + i]);
+    if (file_data.len < 0x800) {
+        return error.InvalidPsExe;
     }
 
-    cpu.pc = initial_pc;
-    cpu.pc_next = initial_pc +% 4;
-    cpu.current_pc = initial_pc;
-
-    cpu.regs = [_]u32{0} ** 32;
-    cpu.hi = 0;
-    cpu.lo = 0;
-
-    if (sp_base != 0) {
-        cpu.regs[29] = sp_base +% sp_offset;
+    if (!std.mem.eql(u8, file_data[0..8], "PS-X EXE")) {
+        return error.InvalidPsExe;
     }
 
+    const pc = readLe32(file_data[0x10..0x14]);
+    const dest = readLe32(file_data[0x18..0x1C]);
+    const size = readLe32(file_data[0x1C..0x20]);
+    const sp_base = readLe32(file_data[0x30..0x34]);
+    const sp_offset = readLe32(file_data[0x34..0x38]);
+
+    const payload = file_data[0x800..];
+    const copy_size: usize = @min(@as(usize, @intCast(size)), payload.len);
+
+    var i: usize = 0;
+    while (i < copy_size) : (i += 1) {
+        const physical = (dest & 0x001F_FFFF) + @as(u32, @intCast(i));
+        bus.ramWrite8Physical(physical, payload[i]);
+    }
+
+    cpu.pc = pc;
+    cpu.pc_next = pc +% 4;
+
+    const sp = if (sp_base != 0)
+        sp_base +% sp_offset
+    else
+        0x801F_FF00;
+
+    cpu.regs[29] = sp;
     std.debug.print(
         "Loaded PS-EXE {s}: pc=0x{X:0>8} dest=0x{X:0>8} size=0x{X} sp=0x{X:0>8}\n",
-        .{ path, initial_pc, dest, size, cpu.regs[29] },
+        .{ path, pc, dest, size, cpu.regs[29] },
+    );
+
+    const pc_offset: usize = @intCast(pc -% dest);
+
+    if (pc_offset + 16 <= payload.len) {
+        std.debug.print(
+            "EXE code at PC offset 0x{X}: {X:0>8} {X:0>8} {X:0>8} {X:0>8}\n",
+            .{
+                pc_offset,
+                readLe32(payload[pc_offset + 0 .. pc_offset + 4]),
+                readLe32(payload[pc_offset + 4 .. pc_offset + 8]),
+                readLe32(payload[pc_offset + 8 .. pc_offset + 12]),
+                readLe32(payload[pc_offset + 12 .. pc_offset + 16]),
+            },
+        );
+    }
+    std.debug.print(
+        "RAM code at PC: {X:0>8} {X:0>8} {X:0>8} {X:0>8}\n",
+        .{
+            bus.read32(pc),
+            bus.read32(pc + 4),
+            bus.read32(pc + 8),
+            bus.read32(pc + 12),
+        },
     );
 }

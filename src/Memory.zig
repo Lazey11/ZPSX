@@ -3,6 +3,7 @@ const BIOS = @import("bios.zig");
 const debug_f = @import("debug.zig");
 const gpu_f = @import("gpu.zig");
 const cdrom_f = @import("cdrom.zig");
+const controller_f = @import("controller.zig");
 
 pub const MEMORY_MASK_REGION = [_]u32{
     0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, //KUSEG
@@ -59,6 +60,7 @@ pub const Bus = struct {
     cdrom_regs: [0x20]u8 = [_]u8{0} ** 0x20,
 
     gpu: gpu_f.Gpu = .{},
+    controller: controller_f.Controller = .{},
 
     dma_dicr: u32 = 0,
 
@@ -95,9 +97,10 @@ pub const Bus = struct {
         if (self.bios) |b| {
             b.deinit();
         }
+
+        self.cdrom.deinit();
         self.ram.deinit();
         self.allocator.destroy(self);
-        self.cdrom.deinit();
     }
 
     pub const Spu = struct {
@@ -388,6 +391,7 @@ pub const Bus = struct {
 
     pub fn isKnownHwRegister(physical: u32) bool {
         return (physical >= 0x1F80_1000 and physical <= 0x1F80_10FF) or
+            (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) or
             (physical >= 0x1F80_1070 and physical <= 0x1F80_1077) or
             (physical >= 0x1F80_1800 and physical <= 0x1F80_181F) or
             (physical >= 0x1F80_1810 and physical <= 0x1F80_1817) or
@@ -422,6 +426,10 @@ pub const Bus = struct {
 
     pub fn read8(self: *Bus, address: u32) u8 {
         const physical = maskRegion(address);
+
+        if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
+            std.debug.print("JOY READ8 physical=0x{X:0>8} pc=0x{X:0>8}\n", .{ physical, self.debug_cpu_pc });
+        }
 
         if (physical >= Ram.Start and physical <= Ram.End) {
             const offset: usize = @intCast(physical - Ram.Start);
@@ -486,6 +494,33 @@ pub const Bus = struct {
                 self.traceInterestingHwRead(physical, value, 8);
                 return value;
             }
+
+            if (physical == JOY_DATA) {
+                return self.controller.readData();
+            }
+            if (physical >= JOY_STAT and physical <= JOY_STAT + 3) {
+                const value = @as(u32, self.controller.readStat());
+                const shift: u5 = @intCast((physical - JOY_STAT) * 8);
+                return @intCast((value >> shift) & 0xFF);
+            }
+            if (physical >= JOY_MODE and physical <= JOY_MODE + 1) {
+                const value = @as(u32, self.controller.readMode());
+                const shift: u5 = @intCast((physical - JOY_MODE) * 8);
+                return @intCast((value >> shift) & 0xFF);
+            }
+
+            if (physical >= JOY_CTRL and physical <= JOY_CTRL + 1) {
+                const value = @as(u32, self.controller.readCtrl());
+                const shift: u5 = @intCast((physical - JOY_CTRL) * 8);
+                return @intCast((value >> shift) & 0xFF);
+            }
+
+            if (physical >= JOY_BAUD and physical <= JOY_BAUD + 1) {
+                const value = @as(u32, self.controller.readBaud());
+                const shift: u5 = @intCast((physical - JOY_BAUD) * 8);
+                return @intCast((value >> shift) & 0xFF);
+            }
+
             if (physical >= 0x1F80_1060 and physical <= 0x1F80_1063) {
                 const value = self.hwRead8Raw(physical);
                 self.traceInterestingHwRead(physical, value, 8);
@@ -522,6 +557,25 @@ pub const Bus = struct {
         }
 
         const physical = maskRegion(address);
+        if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
+            std.debug.print("JOY READ16 physical=0x{X:0>8} pc=0x{X:0>8}\n", .{ physical, self.debug_cpu_pc });
+        }
+
+        if (physical == JOY_STAT) {
+            return self.controller.readStat();
+        }
+
+        if (physical == JOY_MODE) {
+            return self.controller.readMode();
+        }
+
+        if (physical == JOY_CTRL) {
+            return self.controller.readCtrl();
+        }
+
+        if (physical == JOY_BAUD) {
+            return self.controller.readBaud();
+        }
 
         if (physical >= 0x1F80_1100 and physical <= 0x1F80_112B) {
             if (self.readRootCounter16(physical)) |value| {
@@ -668,6 +722,21 @@ pub const Bus = struct {
             self.traceInterestingHwRead(physical, value, 32);
             return value;
         }
+        if (physical == JOY_DATA) {
+            return self.controller.readData();
+        }
+        if (physical == JOY_STAT) {
+            return self.controller.readStat();
+        }
+        if (physical == JOY_MODE) {
+            return self.controller.readMode();
+        }
+        if (physical == JOY_CTRL) {
+            return self.controller.readCtrl();
+        }
+        if (physical == JOY_BAUD) {
+            return self.controller.readBaud();
+        }
 
         // Generic memory-control register readback.
         if (physical >= 0x1F80_1000 and physical <= 0x1F80_10FF) {
@@ -721,6 +790,9 @@ pub const Bus = struct {
 
     pub fn write8(self: *Bus, address: u32, value: u8) void {
         const physical = maskRegion(address);
+        if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
+            std.debug.print("JOY WRITE8 physical=0x{X:0>8} value=0x{X:0>2} pc=0x{X:0>8}\n", .{ physical, value, self.debug_cpu_pc });
+        }
 
         if (false and physical >= 0x000D_61E8 and physical <= 0x000D_61EF) {
             std.debug.print(
@@ -756,6 +828,38 @@ pub const Bus = struct {
         }
 
         if (physical >= HardwareRegisters.Start and physical <= HardwareRegisters.End) {
+            if (physical == JOY_DATA) {
+                self.controller.writeData(value);
+                return;
+            }
+
+            if (physical >= JOY_MODE and physical <= JOY_MODE + 1) {
+                var old = self.controller.readMode();
+                const shift: u4 = @intCast((physical - JOY_MODE) * 8);
+                const mask: u16 = @as(u16, 0xFF) << shift;
+                old = (old & ~mask) | ((@as(u16, value) << shift) & mask);
+                self.controller.writeMode(old);
+                return;
+            }
+
+            if (physical >= JOY_CTRL and physical <= JOY_CTRL + 1) {
+                var old = self.controller.readCtrl();
+                const shift: u4 = @intCast((physical - JOY_CTRL) * 8);
+                const mask: u16 = @as(u16, 0xFF) << shift;
+                old = (old & ~mask) | ((@as(u16, value) << shift) & mask);
+                self.controller.writeCtrl(old);
+                return;
+            }
+
+            if (physical >= JOY_BAUD and physical <= JOY_BAUD + 1) {
+                var old = self.controller.readBaud();
+                const shift: u4 = @intCast((physical - JOY_BAUD) * 8);
+                const mask: u16 = @as(u16, 0xFF) << shift;
+                old = (old & ~mask) | ((@as(u16, value) << shift) & mask);
+                self.controller.writeBaud(old);
+                return;
+            }
+
             // Generic backing first. This lets BIOS config write/read checks pass.
             self.hwWrite8Raw(physical, value);
             if (debug_f.enable_unknown_hw_trace and isMemControlE0Range(physical)) {
@@ -849,6 +953,24 @@ pub const Bus = struct {
         }
 
         const physical = maskRegion(address);
+        if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
+            std.debug.print("JOY WRITE16 physical=0x{X:0>8} value=0x{X:0>4} pc=0x{X:0>8}\n", .{ physical, value, self.debug_cpu_pc });
+        }
+
+        if (physical == JOY_MODE) {
+            self.controller.writeMode(value);
+            return;
+        }
+
+        if (physical == JOY_CTRL) {
+            self.controller.writeCtrl(value);
+            return;
+        }
+
+        if (physical == JOY_BAUD) {
+            self.controller.writeBaud(value);
+            return;
+        }
 
         if (false and physical >= 0x000D_61E8 and physical <= 0x000D_61EF) {
             std.debug.print(
@@ -1044,6 +1166,22 @@ pub const Bus = struct {
             self.gpu.writeGp1(self.debug_cpu_pc, value);
             return;
         }
+        if (physical == JOY_DATA) {
+            self.controller.writeData(@intCast(value & 0xFF));
+            return;
+        }
+        if (physical == JOY_MODE) {
+            self.controller.writeMode(@intCast(value & 0xFFFF));
+            return;
+        }
+        if (physical == JOY_CTRL) {
+            self.controller.writeCtrl(@intCast(value & 0xFFFF));
+            return;
+        }
+        if (physical == JOY_BAUD) {
+            self.controller.writeBaud(@intCast(value & 0xFFFF));
+            return;
+        }
 
         // Generic mem-control registers.
         // Keep this AFTER I_STAT/I_MASK/DMA special cases.
@@ -1099,3 +1237,8 @@ pub const HwPortRange = struct {
     pub const Start: u32 = 0x1f80_1800;
     pub const End: u32 = 0x1f80_181f;
 };
+const JOY_DATA: u32 = 0x1F80_1040;
+const JOY_STAT: u32 = 0x1F80_1044;
+const JOY_MODE: u32 = 0x1F80_1048;
+const JOY_CTRL: u32 = 0x1F80_104A;
+const JOY_BAUD: u32 = 0x1F80_104E;

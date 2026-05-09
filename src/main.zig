@@ -9,8 +9,9 @@ const psxexe = @import("psxexe.zig");
 const steps_per_frame: usize = 565_000;
 const enable_fps_log = false;
 pub fn main(init: std.process.Init) !void {
+    //arena allocator
     const allocator = init.arena.allocator();
-
+    //SDL initialisation
     var sdl = display.SDL{};
     var config: display.displayConfig = undefined;
     var emu_state: display.EmuState = .RUNNING;
@@ -18,36 +19,30 @@ pub fn main(init: std.process.Init) !void {
     try display.displaySetConfig(&config);
     try display.SDL_INIT(&sdl, &config);
     defer display.cleanup(&sdl) catch {};
-
+    //memory initialisation
     const bus = bus_f.Bus.init(allocator);
     defer bus.deinit();
-
+    //cpu initialisation
+    var cpu = cpu_f.Cpu.init(bus);
+    defer cpu.deinit();
+    //psxe tests with exe
     const args = try init.minimal.args.toSlice(allocator);
     try bus.loadBios(init.io, args[1]);
 
     if (args.len >= 3) {
-        try bus.cdrom.loadBin(init.io, args[2]);
+        try psxexe.loadPsExe(allocator, init.io, bus, &cpu, args[2]);
     }
-
-    var cpu = cpu_f.Cpu.init(bus);
-    var loaded_exe = false;
-    defer cpu.deinit();
 
     var fps_frame_count: u32 = 0;
     var fps_last_time_ms: u64 = C.SDL_GetTicks();
     var fps_last_instruction_count: u64 = cpu.instruction_count;
 
     while (emu_state != .Quit) {
-        try controls.inputControls(&emu_state);
+        try controls.inputControls(&emu_state, bus);
 
         var i: usize = 0;
         while (i < steps_per_frame) : (i += 1) {
             cpu.step(false);
-        }
-
-        if (!loaded_exe and args.len >= 3 and cpu.instruction_count > 25_000_000) {
-            try psxexe.loadPsExe(allocator, init.io, bus, &cpu, args[2]);
-            loaded_exe = true;
         }
 
         try display.clearScreen(&sdl, config);
