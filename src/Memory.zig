@@ -544,15 +544,8 @@ pub const Bus = struct {
                 return self.spu_regs[offset];
             }
             if (physical >= Cdrom.Start and physical <= Cdrom.End) {
-                const offset: usize = @intCast(physical - Cdrom.Start);
-
-                const value: u8 = if (offset == 0)
-                    0x18
-                else
-                    self.cdrom_regs[offset];
-
-                self.traceInterestingHwRead(physical, value, 8);
-                return value;
+                const offset: u2 = @intCast(physical - Cdrom.Start);
+                return self.cdrom.readRegister(offset);
             }
 
             if (physical == JOY_DATA) {
@@ -985,8 +978,8 @@ pub const Bus = struct {
             }
 
             if (physical >= Cdrom.Start and physical <= Cdrom.End) {
-                const offset: usize = @intCast(physical - Cdrom.Start);
-                self.cdrom_regs[offset] = value;
+                const offset: u2 = @intCast(physical - Cdrom.Start);
+                self.cdrom.writerRegister(offset, value);
                 return;
             }
 
