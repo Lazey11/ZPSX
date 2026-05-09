@@ -93,6 +93,30 @@ pub const Cdrom = struct {
         self.clearParameters();
 
         switch (value) {
+            0x01 => {
+                self.pushResponse(0x02);
+                self.interrupt_flag |= 0x03;
+            },
+            0x02 => {
+                _ = self.popParameter();
+                _ = self.popParameter();
+                _ = self.popParameter();
+
+                self.pushResponse(0x02);
+                self.interrupt_flag |= 0x03;
+            },
+            0x06 => {
+                self.pushResponse(0x02);
+                self.interrupt_flag |= 0x03;
+            },
+            0x09 => {
+                self.pushResponse(0x02);
+                self.interrupt_flag |= 0x03;
+            },
+            0x0A => {
+                self.pushResponse(0x02);
+                self.interrupt_flag |= 0x03;
+            },
             0x19 => {
                 self.pushResponse(0x94);
                 self.pushResponse(0x09);
@@ -100,8 +124,15 @@ pub const Cdrom = struct {
                 self.pushResponse(0xC0);
                 self.interrupt_flag |= 0x03;
             },
-            0x01 => {
+            0x1A => {
                 self.pushResponse(0x02);
+                self.pushResponse(0x00);
+                self.pushResponse(0x20);
+                self.pushResponse(0x00);
+                self.pushResponse(0x53);
+                self.pushResponse(0x43);
+                self.pushResponse(0x45);
+                self.pushResponse(0x41);
                 self.interrupt_flag |= 0x03;
             },
             else => {
