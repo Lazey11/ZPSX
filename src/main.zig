@@ -10,25 +10,52 @@ const steps_per_frame: usize = @intCast(bus_f.CPU_CYCLES_PER_FRAME);
 const exe_load_after_instructions: u64 = 25_000_000;
 const enable_fps_log = false;
 
+fn hasArg(args: []const []const u8, name: []const u8) bool {
+    for (args) |arg| {
+        if (std.mem.eql(u8, arg, name)) return true;
+    }
+    return false;
+}
+
+fn parseFrames(args: []const []const u8) !?u64 {
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        if (std.mem.eql(u8, args[i], "--frames")) {
+            if (i + 1 >= args.len) return error.MissingFrameCount;
+            return try std.fmt.parseInt(u64, args[i + 1], 10);
+        }
+    }
+    return null;
+}
+
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
+
+    const args = try init.minimal.args.toSlice(allocator);
+    if (args.len < 2) {
+        std.debug.print("usage: ZPSX <bios.bin> [program.exe] [--headless] [--frames N]\n", .{});
+        return;
+    }
+
+    const headless = hasArg(args, "--headless");
+    const frame_limit = try parseFrames(args);
 
     var sdl = display.SDL{};
     var config: display.displayConfig = undefined;
     var emu_state: display.EmuState = .RUNNING;
 
-    try display.displaySetConfig(&config);
-    try display.SDL_INIT(&sdl, &config);
-    defer display.cleanup(&sdl) catch {};
+    if (!headless) {
+        try display.displaySetConfig(&config);
+        try display.SDL_INIT(&sdl, &config);
+    }
+    defer {
+        if (!headless) {
+            display.cleanup(&sdl) catch {};
+        }
+    }
 
     const bus = bus_f.Bus.init(allocator);
     defer bus.deinit();
-
-    const args = try init.minimal.args.toSlice(allocator);
-    if (args.len < 2) {
-        std.debug.print("usage: ZPSX <bios.bin> [program.exe]\n", .{});
-        return;
-    }
 
     try bus.loadBios(init.io, args[1]);
 
@@ -37,9 +64,6 @@ pub fn main(init: std.process.Init) !void {
 
     var loaded_exe = false;
 
-    // Auto mode:
-    // - PeterLemon CPUTest has a real stack in the PS-EXE header, so load immediately.
-    // - ps1-tests pad.exe has header stack 0, so load after BIOS has initialized.
     const delayed_exe_load = if (args.len >= 3)
         try psxexe.shouldDelayLoad(init.io, args[2])
     else
@@ -54,8 +78,12 @@ pub fn main(init: std.process.Init) !void {
     var fps_last_time_ms: u64 = C.SDL_GetTicks();
     var fps_last_instruction_count: u64 = cpu.instruction_count;
 
+    var frames_run: u64 = 0;
+
     while (emu_state != .Quit) {
-        try controls.inputControls(&emu_state, bus);
+        if (!headless) {
+            try controls.inputControls(&emu_state, bus);
+        }
 
         var i: usize = 0;
         while (i < steps_per_frame) : (i += 1) {
@@ -67,9 +95,19 @@ pub fn main(init: std.process.Init) !void {
             loaded_exe = true;
         }
 
-        try display.clearScreen(&sdl, config);
-        try display.drawVramToScreen(&sdl, &config, &bus.gpu);
-        try display.updateScreen(&sdl, &config);
+        if (!headless) {
+            try display.clearScreen(&sdl, config);
+            try display.drawVramToScreen(&sdl, &config, &bus.gpu);
+            try display.updateScreen(&sdl, &config);
+            C.SDL_Delay(16);
+        }
+
+        frames_run += 1;
+        if (headless) {
+            if (frame_limit) |limit| {
+                if (frames_run >= limit) break;
+            }
+        }
 
         if (enable_fps_log) {
             fps_frame_count += 1;
@@ -90,7 +128,5 @@ pub fn main(init: std.process.Init) !void {
                 fps_last_instruction_count = cpu.instruction_count;
             }
         }
-
-        C.SDL_Delay(16);
     }
 }
