@@ -323,89 +323,40 @@ pub const Bus = struct {
             self.ramWrite32Physical(vblank_entry, state | 0x0000_1000);
         }
     }
-
     fn tickRootCounters(self: *Bus) void {
-        self.tickRootCounter0();
-        self.tickRootCounter1();
-        self.tickRootCounter2();
+        self.tickRootCounter(&self.root_counter0, self.root_mode0, self.root_target0, 4);
+        self.tickRootCounter(&self.root_counter1, self.root_mode1, self.root_target1, 5);
+        self.tickRootCounter(&self.root_counter2, self.root_mode2, self.root_target2, 6);
     }
 
-    fn tickRootCounter0(self: *Bus) void {
-        self.root_counter0 +%= 1;
+    fn tickRootCounter(
+        self: *Bus,
+        counter: *u16,
+        mode: u16,
+        target: u16,
+        irq_bit: u5,
+    ) void {
+        counter.* +%= 1;
 
-        const reset_on_target = (self.root_mode0 & (1 << 3)) != 0;
-        const irq_on_target = (self.root_mode0 & (1 << 4)) != 0;
+        const reset_on_target = (mode & (1 << 3)) != 0;
+        const irq_on_target = (mode & (1 << 4)) != 0;
 
-        if (self.root_counter0 == self.root_target0) {
+        if (counter.* == target) {
             if (irq_on_target) {
-                self.interrupt_status |= 1 << 4;
+                self.interrupt_status |= @as(u32, 1) << irq_bit;
                 self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
             }
 
             if (reset_on_target) {
-                self.root_counter0 = 0;
+                counter.* = 0;
             }
         }
 
-        if (self.root_counter0 == 0) {
-            const irq_on_overflow = (self.root_mode0 & (1 << 5)) != 0;
+        if (counter.* == 0) {
+            const irq_on_overflow = (mode & (1 << 5)) != 0;
 
             if (irq_on_overflow) {
-                self.interrupt_status |= 1 << 4;
-                self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
-            }
-        }
-    }
-
-    fn tickRootCounter1(self: *Bus) void {
-        self.root_counter1 +%= 1;
-
-        const reset_on_target = (self.root_mode1 & (1 << 3)) != 0;
-        const irq_on_target = (self.root_mode1 & (1 << 4)) != 0;
-
-        if (self.root_counter1 == self.root_target1) {
-            if (irq_on_target) {
-                self.interrupt_status |= 1 << 5;
-                self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
-            }
-
-            if (reset_on_target) {
-                self.root_counter1 = 0;
-            }
-        }
-
-        if (self.root_counter1 == 0) {
-            const irq_on_overflow = (self.root_mode1 & (1 << 5)) != 0;
-
-            if (irq_on_overflow) {
-                self.interrupt_status |= 1 << 5;
-                self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
-            }
-        }
-    }
-
-    fn tickRootCounter2(self: *Bus) void {
-        self.root_counter2 +%= 1;
-
-        const reset_on_target = (self.root_mode2 & (1 << 3)) != 0;
-        const irq_on_target = (self.root_mode2 & (1 << 4)) != 0;
-
-        if (self.root_counter2 == self.root_target2) {
-            if (irq_on_target) {
-                self.interrupt_status |= 1 << 6;
-                self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
-            }
-
-            if (reset_on_target) {
-                self.root_counter2 = 0;
-            }
-        }
-
-        if (self.root_counter2 == 0) {
-            const irq_on_overflow = (self.root_mode2 & (1 << 5)) != 0;
-
-            if (irq_on_overflow) {
-                self.interrupt_status |= 1 << 6;
+                self.interrupt_status |= @as(u32, 1) << irq_bit;
                 self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
             }
         }
