@@ -9,6 +9,10 @@ pub const Cdrom = struct {
     response_len: u8 = 0,
     response_index: u8 = 0,
 
+    parameter_fifo: [16]u8 = [_]u8{0} ** 16,
+    parameter_len: u8 = 0,
+    parameter_index: u8 = 0,
+
     allocator: std.mem.Allocator,
     data: []u8 = &[_]u8{},
 
@@ -39,7 +43,13 @@ pub const Cdrom = struct {
         switch (offset) {
             0 => self.index = value & 0x03,
             1 => self.command(value),
-            2 => self.interrupt_enable = value,
+            2 => {
+                if (self.index == 0) {
+                    self.pushParameter(value);
+                } else {
+                    self.interrupt_enable = value;
+                }
+            },
             3 => self.interrupt_flag &= ~value,
         }
     }
@@ -62,8 +72,25 @@ pub const Cdrom = struct {
         return value;
     }
 
+    fn clearParameters(self: *Cdrom) void {
+        self.parameter_len = 0;
+        self.parameter_index = 0;
+    }
+    fn pushParameter(self: *Cdrom, value: u8) void {
+        if (self.parameter_len >= self.parameter_fifo.len) return;
+        self.parameter_fifo[self.parameter_len] = value;
+        self.parameter_len += 1;
+    }
+    fn popParameter(self: *Cdrom) u8 {
+        if (self.parameter_index >= self.parameter_len) return 0;
+        const value = self.parameter_fifo[self.parameter_index];
+        self.parameter_index += 1;
+        return value;
+    }
+
     fn command(self: *Cdrom, value: u8) void {
         self.clearResponse();
+        self.clearParameters();
 
         switch (value) {
             0x19 => {
