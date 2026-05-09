@@ -41,10 +41,9 @@ pub fn inputControls(emu_state: *display.EmuState, bus: *bus_f.Bus) !void {
                     else => {},
                 }
 
-                std.debug.print(
-                    "PAD buttons=0x{X:0>4} pressed={} key={}\n",
-                    .{ bus.controller.buttons, pressed, event.key.key },
-                );
+                // std.debug.print(
+                //  .{ bus.controller.buttons, pressed, event.key.key },
+                //);
             },
 
             else => {},

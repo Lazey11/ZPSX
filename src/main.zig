@@ -7,11 +7,13 @@ const cpu_f = @import("cpu.zig");
 const psxexe = @import("psxexe.zig");
 
 const steps_per_frame: usize = 565_000;
+const exe_load_after_instructions: u64 = 50_000_000;
 const enable_fps_log = false;
+const enable_pc_log = false;
+
 pub fn main(init: std.process.Init) !void {
-    //arena allocator
     const allocator = init.arena.allocator();
-    //SDL initialisation
+
     var sdl = display.SDL{};
     var config: display.displayConfig = undefined;
     var emu_state: display.EmuState = .RUNNING;
@@ -19,23 +21,41 @@ pub fn main(init: std.process.Init) !void {
     try display.displaySetConfig(&config);
     try display.SDL_INIT(&sdl, &config);
     defer display.cleanup(&sdl) catch {};
-    //memory initialisation
+
     const bus = bus_f.Bus.init(allocator);
     defer bus.deinit();
-    //cpu initialisation
-    var cpu = cpu_f.Cpu.init(bus);
-    defer cpu.deinit();
-    //psxe tests with exe
+
     const args = try init.minimal.args.toSlice(allocator);
+    if (args.len < 2) {
+        std.debug.print("usage: ZPSX <bios.bin> [program.exe]\n", .{});
+        return;
+    }
+
     try bus.loadBios(init.io, args[1]);
 
-    if (args.len >= 3) {
+    var cpu = cpu_f.Cpu.init(bus);
+    defer cpu.deinit();
+
+    var loaded_exe = false;
+
+    // Auto mode:
+    // - PeterLemon CPUTest has a real stack in the PS-EXE header, so load immediately.
+    // - ps1-tests pad.exe has header stack 0, so load after BIOS has initialized.
+    const delayed_exe_load = if (args.len >= 3)
+        try psxexe.shouldDelayLoad(init.io, args[2])
+    else
+        false;
+
+    if (!delayed_exe_load and args.len >= 3) {
         try psxexe.loadPsExe(allocator, init.io, bus, &cpu, args[2]);
+        loaded_exe = true;
     }
 
     var fps_frame_count: u32 = 0;
     var fps_last_time_ms: u64 = C.SDL_GetTicks();
     var fps_last_instruction_count: u64 = cpu.instruction_count;
+
+    var last_pc_log_ms: u64 = C.SDL_GetTicks();
 
     while (emu_state != .Quit) {
         try controls.inputControls(&emu_state, bus);
@@ -44,10 +64,32 @@ pub fn main(init: std.process.Init) !void {
         while (i < steps_per_frame) : (i += 1) {
             cpu.step(false);
         }
+        if (delayed_exe_load and !loaded_exe and cpu.instruction_count >= exe_load_after_instructions) {
+            try psxexe.loadPsExe(allocator, init.io, bus, &cpu, args[2]);
+            loaded_exe = true;
+        }
+
+        if (enable_pc_log) {
+            const now_pc_ms: u64 = C.SDL_GetTicks();
+            if (now_pc_ms - last_pc_log_ms >= 1000) {
+                std.debug.print(
+                    .{
+                        cpu.current_pc,
+                        cpu.pc,
+                        cpu.pc_next,
+                        cpu.regs[31],
+                        cpu.regs[29],
+                        cpu.instruction_count,
+                    },
+                );
+                last_pc_log_ms = now_pc_ms;
+            }
+        }
 
         try display.clearScreen(&sdl, config);
         try display.drawVramToScreen(&sdl, &config, &bus.gpu);
         try display.updateScreen(&sdl, &config);
+
         if (enable_fps_log) {
             fps_frame_count += 1;
             const now_ms: u64 = C.SDL_GetTicks();

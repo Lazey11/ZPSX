@@ -56,12 +56,11 @@ pub fn loadPsExe(
     cpu.pc = pc;
     cpu.pc_next = pc +% 4;
 
-    const sp = if (sp_base != 0)
-        sp_base +% sp_offset
-    else
-        0x801F_FF00;
-
-    cpu.regs[29] = sp;
+    if (sp_base != 0) {
+        cpu.regs[29] = sp_base +% sp_offset;
+    }
+    // If PS-EXE header stack is zero, keep the current CPU stack.
+    // Some BIOS/libps tests rely on the BIOS/runtime stack already being valid.
     std.debug.print(
         "Loaded PS-EXE {s}: pc=0x{X:0>8} dest=0x{X:0>8} size=0x{X} sp=0x{X:0>8}\n",
         .{ path, pc, dest, size, cpu.regs[29] },
@@ -90,4 +89,24 @@ pub fn loadPsExe(
             bus.read32(pc + 12),
         },
     );
+}
+pub fn shouldDelayLoad(io: std.Io, path: []const u8) !bool {
+    var file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
+
+    var header: [0x800]u8 = undefined;
+
+    var buffer: [4096]u8 = undefined;
+    var file_reader = file.reader(io, &buffer);
+    const reader = &file_reader.interface;
+    try reader.readSliceAll(&header);
+
+    if (!std.mem.eql(u8, header[0..8], "PS-X EXE")) {
+        return false;
+    }
+
+    const sp_base = readLe32(header[0x30..0x34]);
+
+    // Header stack 0 usually means BIOS/libps runtime should already be initialized.
+    return sp_base == 0;
 }

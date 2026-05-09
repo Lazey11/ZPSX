@@ -427,9 +427,8 @@ pub const Bus = struct {
     pub fn read8(self: *Bus, address: u32) u8 {
         const physical = maskRegion(address);
 
-        if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
-            std.debug.print("JOY READ8 physical=0x{X:0>8} pc=0x{X:0>8}\n", .{ physical, self.debug_cpu_pc });
-        }
+        //if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
+        //}
 
         if (physical >= Ram.Start and physical <= Ram.End) {
             const offset: usize = @intCast(physical - Ram.Start);
@@ -557,9 +556,8 @@ pub const Bus = struct {
         }
 
         const physical = maskRegion(address);
-        if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
-            std.debug.print("JOY READ16 physical=0x{X:0>8} pc=0x{X:0>8}\n", .{ physical, self.debug_cpu_pc });
-        }
+        // if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
+        //}
 
         if (physical == JOY_STAT) {
             return self.controller.readStat();
@@ -790,9 +788,8 @@ pub const Bus = struct {
 
     pub fn write8(self: *Bus, address: u32, value: u8) void {
         const physical = maskRegion(address);
-        if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
-            std.debug.print("JOY WRITE8 physical=0x{X:0>8} value=0x{X:0>2} pc=0x{X:0>8}\n", .{ physical, value, self.debug_cpu_pc });
-        }
+        // if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
+        // }
 
         if (false and physical >= 0x000D_61E8 and physical <= 0x000D_61EF) {
             std.debug.print(
@@ -953,9 +950,8 @@ pub const Bus = struct {
         }
 
         const physical = maskRegion(address);
-        if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
-            std.debug.print("JOY WRITE16 physical=0x{X:0>8} value=0x{X:0>4} pc=0x{X:0>8}\n", .{ physical, value, self.debug_cpu_pc });
-        }
+        //if (physical >= 0x1F80_1040 and physical <= 0x1F80_104F) {
+        //  }
 
         if (physical == JOY_MODE) {
             self.controller.writeMode(value);
