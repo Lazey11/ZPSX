@@ -9,7 +9,6 @@ const psxexe = @import("psxexe.zig");
 const steps_per_frame: usize = 565_000;
 const exe_load_after_instructions: u64 = 50_000_000;
 const enable_fps_log = false;
-const enable_pc_log = false;
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
@@ -55,8 +54,6 @@ pub fn main(init: std.process.Init) !void {
     var fps_last_time_ms: u64 = C.SDL_GetTicks();
     var fps_last_instruction_count: u64 = cpu.instruction_count;
 
-    var last_pc_log_ms: u64 = C.SDL_GetTicks();
-
     while (emu_state != .Quit) {
         try controls.inputControls(&emu_state, bus);
 
@@ -67,23 +64,6 @@ pub fn main(init: std.process.Init) !void {
         if (delayed_exe_load and !loaded_exe and cpu.instruction_count >= exe_load_after_instructions) {
             try psxexe.loadPsExe(allocator, init.io, bus, &cpu, args[2]);
             loaded_exe = true;
-        }
-
-        if (enable_pc_log) {
-            const now_pc_ms: u64 = C.SDL_GetTicks();
-            if (now_pc_ms - last_pc_log_ms >= 1000) {
-                std.debug.print(
-                    .{
-                        cpu.current_pc,
-                        cpu.pc,
-                        cpu.pc_next,
-                        cpu.regs[31],
-                        cpu.regs[29],
-                        cpu.instruction_count,
-                    },
-                );
-                last_pc_log_ms = now_pc_ms;
-            }
         }
 
         try display.clearScreen(&sdl, config);
