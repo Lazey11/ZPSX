@@ -6,7 +6,7 @@ const bus_f = @import("Memory.zig");
 const cpu_f = @import("cpu.zig");
 const psxexe = @import("psxexe.zig");
 
-const steps_per_frame: usize = 565_000;
+const steps_per_frame: usize = @intCast(bus_f.CPU_CYCLES_PER_FRAME);
 const exe_load_after_instructions: u64 = 100_000_000;
 const enable_fps_log = false;
 
