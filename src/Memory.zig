@@ -1294,5 +1294,7 @@ pub const CPU_CLOCK_HZ: u64 = 33_868_800;
 pub const VIDEO_FPS: u64 = 60;
 pub const SCANLINES_PER_FRAME: u64 = 263;
 
-pub const CPU_CYCLES_PER_FRAME: u64 = CPU_CLOCK_HZ / VIDEO_FPS;
+// Temporary compatibility timing for BIOS boot.
+// The old BIOS-logo path depended on vblank being raised at this fake interval.
+pub const CPU_CYCLES_PER_FRAME: u64 = 500_000;
 pub const CPU_CYCLES_PER_SCANLINE: u64 = CPU_CYCLES_PER_FRAME / SCANLINES_PER_FRAME;
