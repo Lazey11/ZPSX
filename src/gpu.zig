@@ -1,8 +1,11 @@
 const std = @import("std");
+const debug_f = @import("debug.zig");
 
 pub const Gpu = struct {
     pub const GP0: u32 = 0x1F80_1810;
     pub const GP1: u32 = 0x1F80_1814;
+
+    unsupported_gp0_log_count: u32 = 0,
 
     status: u32 = 0x1C00_0000,
 
@@ -262,7 +265,6 @@ pub const Gpu = struct {
     pub fn writeGp0(self: *Gpu, pc: u32, value: u32) void {
         const cmd: u8 = @intCast(value >> 24);
         self.gp0_last = value;
-        _ = pc;
 
         if (self.gp0_dot_active) {
             const x = xyX(value) + self.draw_offset_x;
@@ -519,10 +521,13 @@ pub const Gpu = struct {
             },
 
             else => {
-                //std.debug.print(
-                // "GP0 CMD PC=0x{X:0>8} cmd=0x{X:0>2} value=0x{X:0>8}\n",
-                //   .{ pc, cmd, value },
-                //   );
+                if (debug_f.enable_gpu_unsupported_trace and self.unsupported_gp0_log_count < 128) {
+                    self.unsupported_gp0_log_count += 1;
+                    std.debug.print(
+                        "UNSUPPORTED GP0 PC=0x{X:0>8} cmd=0x{X:0>2} value=0x{X:0>8}\n",
+                        .{ pc, cmd, value },
+                    );
+                }
             },
         }
     }
