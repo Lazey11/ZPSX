@@ -43,6 +43,13 @@ pub const Gpu = struct {
     gp0_line_index: u8 = 0,
     gp0_line_active: bool = false,
 
+    gp0_shaded_polyline_last_xy: u32 = 0,
+    gp0_shaded_polyline_last_color: u16 = 0,
+    gp0_shaded_polyline_pending_color: u16 = 0,
+    gp0_shaded_polyline_have_last: bool = false,
+    gp0_shaded_polyline_need_xy: bool = true,
+    gp0_shaded_polyline_active: bool = false,
+
     gp0_shaded_quad_color: u16 = 0,
     gp0_shaded_quad_words: [7]u32 = [_]u32{0} ** 7,
     gp0_shaded_quad_index: u8 = 0,
@@ -631,6 +638,50 @@ pub const Gpu = struct {
             return;
         }
 
+        if (self.gp0_shaded_polyline_active) {
+            if (value == 0x5555_5555 or value == 0x5000_5000) {
+                self.gp0_shaded_polyline_active = false;
+                self.gp0_shaded_polyline_have_last = false;
+                self.gp0_shaded_polyline_need_xy = true;
+                return;
+            }
+
+            if (self.gp0_shaded_polyline_need_xy) {
+                if (!self.gp0_shaded_polyline_have_last) {
+                    self.gp0_shaded_polyline_last_xy = value;
+                    self.gp0_shaded_polyline_last_color = self.gp0_shaded_polyline_pending_color;
+                    self.gp0_shaded_polyline_have_last = true;
+                } else {
+                    const xy0 = self.gp0_shaded_polyline_last_xy;
+                    const xy1 = value;
+
+                    const x0 = xyX(xy0) + self.draw_offset_x;
+                    const y0 = xyY(xy0) + self.draw_offset_y;
+                    const x1 = xyX(xy1) + self.draw_offset_x;
+                    const y1 = xyY(xy1) + self.draw_offset_y;
+
+                    self.drawShadedLine(
+                        x0,
+                        y0,
+                        self.gp0_shaded_polyline_last_color,
+                        x1,
+                        y1,
+                        self.gp0_shaded_polyline_pending_color,
+                    );
+
+                    self.gp0_shaded_polyline_last_xy = value;
+                    self.gp0_shaded_polyline_last_color = self.gp0_shaded_polyline_pending_color;
+                }
+
+                self.gp0_shaded_polyline_need_xy = false;
+                return;
+            }
+
+            self.gp0_shaded_polyline_pending_color = rgb24ToRgb555(value);
+            self.gp0_shaded_polyline_need_xy = true;
+            return;
+        }
+
         if (self.gp0_skip_words > 0) {
             self.gp0_skip_words -= 1;
             return;
@@ -740,6 +791,12 @@ pub const Gpu = struct {
                 self.gp0_shaded_line_color0 = rgb24ToRgb555(value);
                 self.gp0_shaded_line_active = true;
                 self.gp0_shaded_line_index = 0;
+            },
+            0x58, 0x5A => {
+                self.gp0_shaded_polyline_pending_color = rgb24ToRgb555(value);
+                self.gp0_shaded_polyline_active = true;
+                self.gp0_shaded_polyline_have_last = false;
+                self.gp0_shaded_polyline_need_xy = true;
             },
             0x2C => {
                 self.gp0_textured_quad_color = value;
