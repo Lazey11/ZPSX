@@ -804,12 +804,7 @@ pub const Gpu = struct {
                 self.gp0_textured_quad_index = 0;
                 return;
             },
-            0x60 => {
-                self.gp0_sprite_color = rgb24ToRgb555(value);
-                self.gp0_sprite_active = true;
-                self.gp0_sprite_index = 0;
-            },
-            0x62 => {
+            0x60, 0x62, 0x6A => {
                 self.gp0_sprite_color = rgb24ToRgb555(value);
                 self.gp0_sprite_active = true;
                 self.gp0_sprite_index = 0;
