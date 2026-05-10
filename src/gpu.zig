@@ -75,6 +75,12 @@ pub const Gpu = struct {
     gp0_textured_rect_index: u8 = 0,
     gp0_textured_rect_active: bool = false,
 
+    gp0_fixed_textured_rect_words: [2]u32 = [_]u32{0} ** 2,
+    gp0_fixed_textured_rect_index: u8 = 0,
+    gp0_fixed_textured_rect_w: u32 = 0,
+    gp0_fixed_textured_rect_h: u32 = 0,
+    gp0_fixed_textured_rect_active: bool = false,
+
     draw_area_left: i32 = 0,
     draw_area_top: i32 = 0,
     draw_area_right: i32 = 1023,
@@ -357,6 +363,32 @@ pub const Gpu = struct {
             return;
         }
 
+        if (self.gp0_fixed_textured_rect_active) {
+            self.gp0_fixed_textured_rect_words[self.gp0_fixed_textured_rect_index] = value;
+            self.gp0_fixed_textured_rect_index += 1;
+
+            if (self.gp0_fixed_textured_rect_index == 2) {
+                const xy = self.gp0_fixed_textured_rect_words[0];
+                const uv = self.gp0_fixed_textured_rect_words[1];
+
+                const x = xyX(xy) + self.draw_offset_x;
+                const y = xyY(xy) + self.draw_offset_y;
+
+                self.drawTexturedRect4Bit(
+                    x,
+                    y,
+                    uv,
+                    self.gp0_fixed_textured_rect_w,
+                    self.gp0_fixed_textured_rect_h,
+                );
+
+                self.gp0_fixed_textured_rect_active = false;
+                self.gp0_fixed_textured_rect_index = 0;
+            }
+
+            return;
+        }
+
         if (self.gp0_sprite_active) {
             self.gp0_sprite_words[self.gp0_sprite_index] = value;
             self.gp0_sprite_index += 1;
@@ -551,6 +583,12 @@ pub const Gpu = struct {
                 self.gp0_fixed_rect_h = 8;
                 self.gp0_fixed_rect_active = true;
             },
+            0x74, 0x75 => {
+                self.gp0_fixed_textured_rect_w = 8;
+                self.gp0_fixed_textured_rect_h = 8;
+                self.gp0_fixed_textured_rect_active = true;
+                self.gp0_fixed_textured_rect_index = 0;
+            },
             0x78 => {
                 self.gp0_fixed_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_rect_w = 16;
@@ -564,9 +602,11 @@ pub const Gpu = struct {
                 self.gp0_fixed_rect_active = true;
             },
 
-            0x7C => {
-                //  std.debug.print("GP0 RECT 0x7C value=0x{X:0>8}\n", .{value});
-                self.gp0_skip_words = 2;
+            0x7C, 0x7D => {
+                self.gp0_fixed_textured_rect_w = 16;
+                self.gp0_fixed_textured_rect_h = 16;
+                self.gp0_fixed_textured_rect_active = true;
+                self.gp0_fixed_textured_rect_index = 0;
             },
 
             0xE1 => {
