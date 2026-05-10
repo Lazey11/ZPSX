@@ -66,6 +66,11 @@ pub const Gpu = struct {
     gp0_fixed_rect_h: u32 = 0,
     gp0_fixed_rect_active: bool = false,
 
+    gp0_vram_fill_color: u16 = 0,
+    gp0_vram_fill_words: [2]u32 = [_]u32{0} ** 2,
+    gp0_vram_fill_index: u8 = 0,
+    gp0_vram_fill_active: bool = false,
+
     draw_area_left: i32 = 0,
     draw_area_top: i32 = 0,
     draw_area_right: i32 = 1023,
@@ -309,6 +314,26 @@ pub const Gpu = struct {
             return;
         }
 
+        if (self.gp0_vram_fill_active) {
+            self.gp0_vram_fill_words[self.gp0_vram_fill_index] = value;
+            self.gp0_vram_fill_index += 1;
+
+            if (self.gp0_vram_fill_index == 2) {
+                const xy = self.gp0_vram_fill_words[0];
+                const size = self.gp0_vram_fill_words[1];
+
+                const x: i32 = @intCast(xy & 0xFFFF);
+                const y: i32 = @intCast((xy >> 16) & 0xFFFF);
+                const w: u32 = @intCast(size & 0xFFFF);
+                const h: u32 = @intCast((size >> 16) & 0xFFFF);
+
+                self.drawFilledRect(x, y, w, h, self.gp0_vram_fill_color);
+                self.gp0_vram_fill_active = false;
+                self.gp0_vram_fill_index = 0;
+            }
+            return;
+        }
+
         if (self.gp0_textured_quad_active) {
             self.gp0_textured_quad_words[self.gp0_textured_quad_index] = value;
             self.gp0_textured_quad_index += 1;
@@ -409,7 +434,11 @@ pub const Gpu = struct {
         switch (cmd) {
             0x00 => {}, // NOP
             0x01 => {}, // clear cache
-
+            0x02 => {
+                self.gp0_vram_fill_color = rgb24ToRgb555(value);
+                self.gp0_vram_fill_active = true;
+                self.gp0_vram_fill_index = 0;
+            },
             0x28 => {
                 //std.debug.print("GP0 QUAD 0x28 color=0x{X:0>6}\n", .{value & 0x00FF_FFFF});
                 self.gp0_quad_color = rgb24ToRgb555(value);
