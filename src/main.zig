@@ -27,6 +27,23 @@ fn parseFrames(args: []const []const u8) !?u64 {
     }
     return null;
 }
+fn programPath(args: []const []const u8) ?[]const u8 {
+    var i: usize = 2;
+    while (i < args.len) : (i += 1) {
+        if (std.mem.eql(u8, args[i], "--frames")) {
+            i += 1;
+            continue;
+        }
+
+        if (std.mem.startsWith(u8, args[i], "--")) {
+            continue;
+        }
+
+        return args[i];
+    }
+
+    return null;
+}
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
@@ -39,7 +56,7 @@ pub fn main(init: std.process.Init) !void {
 
     const headless = hasArg(args, "--headless");
     const frame_limit = try parseFrames(args);
-
+    const program_path = programPath(args);
     var sdl = display.SDL{};
     var config: display.displayConfig = undefined;
     var emu_state: display.EmuState = .RUNNING;
@@ -64,14 +81,16 @@ pub fn main(init: std.process.Init) !void {
 
     var loaded_exe = false;
 
-    const delayed_exe_load = if (args.len >= 3)
-        try psxexe.shouldDelayLoad(init.io, args[2])
+    const delayed_exe_load = if (program_path) |path|
+        try psxexe.shouldDelayLoad(init.io, path)
     else
         false;
 
-    if (!delayed_exe_load and args.len >= 3) {
-        try psxexe.loadPsExe(allocator, init.io, bus, &cpu, args[2]);
-        loaded_exe = true;
+    if (!delayed_exe_load) {
+        if (program_path) |path| {
+            try psxexe.loadPsExe(allocator, init.io, bus, &cpu, path);
+            loaded_exe = true;
+        }
     }
 
     var fps_frame_count: u32 = 0;
@@ -91,8 +110,10 @@ pub fn main(init: std.process.Init) !void {
         }
 
         if (delayed_exe_load and !loaded_exe and cpu.instruction_count >= exe_load_after_instructions) {
-            try psxexe.loadPsExe(allocator, init.io, bus, &cpu, args[2]);
-            loaded_exe = true;
+            if (program_path) |path| {
+                try psxexe.loadPsExe(allocator, init.io, bus, &cpu, path);
+                loaded_exe = true;
+            }
         }
 
         if (!headless) {
