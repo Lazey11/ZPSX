@@ -33,6 +33,11 @@ pub const Gpu = struct {
     gp0_polyline_have_last: bool = false,
     gp0_polyline_active: bool = false,
 
+    gp0_shaded_line_color0: u16 = 0,
+    gp0_shaded_line_words: [3]u32 = [_]u32{0} ** 3,
+    gp0_shaded_line_index: u8 = 0,
+    gp0_shaded_line_active: bool = false,
+
     gp0_line_color: u16 = 0,
     gp0_line_words: [2]u32 = [_]u32{0} ** 2,
     gp0_line_index: u8 = 0,
@@ -602,6 +607,30 @@ pub const Gpu = struct {
             return;
         }
 
+        if (self.gp0_shaded_line_active) {
+            self.gp0_shaded_line_words[self.gp0_shaded_line_index] = value;
+            self.gp0_shaded_line_index += 1;
+
+            if (self.gp0_shaded_line_index == 3) {
+                const xy0 = self.gp0_shaded_line_words[0];
+                const color1_word = self.gp0_shaded_line_words[1];
+                const xy1 = self.gp0_shaded_line_words[2];
+
+                const x0 = xyX(xy0) + self.draw_offset_x;
+                const y0 = xyY(xy0) + self.draw_offset_y;
+                const x1 = xyX(xy1) + self.draw_offset_x;
+                const y1 = xyY(xy1) + self.draw_offset_y;
+                const c1 = rgb24ToRgb555(color1_word);
+
+                self.drawShadedLine(x0, y0, self.gp0_shaded_line_color0, x1, y1, c1);
+
+                self.gp0_shaded_line_active = false;
+                self.gp0_shaded_line_index = 0;
+            }
+
+            return;
+        }
+
         if (self.gp0_skip_words > 0) {
             self.gp0_skip_words -= 1;
             return;
@@ -706,6 +735,11 @@ pub const Gpu = struct {
                 self.gp0_polyline_color = rgb24ToRgb555(value);
                 self.gp0_polyline_active = true;
                 self.gp0_polyline_have_last = false;
+            },
+            0x50, 0x52 => {
+                self.gp0_shaded_line_color0 = rgb24ToRgb555(value);
+                self.gp0_shaded_line_active = true;
+                self.gp0_shaded_line_index = 0;
             },
             0x2C => {
                 self.gp0_textured_quad_color = value;
@@ -892,6 +926,55 @@ pub const Gpu = struct {
                 err += dx;
                 y0 += sy;
             }
+        }
+    }
+
+    fn mixLineColor(c0: u16, c1: u16, step: u32, steps: u32) u16 {
+        if (steps == 0) return c0;
+
+        const inv = steps - step;
+
+        const r = (rgb555R(c0) * inv + rgb555R(c1) * step) / steps;
+        const g = (rgb555G(c0) * inv + rgb555G(c1) * step) / steps;
+        const b = (rgb555B(c0) * inv + rgb555B(c1) * step) / steps;
+
+        return @intCast(r | (g << 5) | (b << 10));
+    }
+
+    fn drawShadedLine(self: *Gpu, x0_in: i32, y0_in: i32, c0: u16, x1_in: i32, y1_in: i32, c1: u16) void {
+        var x0 = x0_in;
+        var y0 = y0_in;
+        const x1 = x1_in;
+        const y1 = y1_in;
+
+        const dx_abs: u32 = @intCast(if (x0 < x1) x1 - x0 else x0 - x1);
+        const dy_abs: u32 = @intCast(if (y0 < y1) y1 - y0 else y0 - y1);
+        const steps = if (dx_abs > dy_abs) dx_abs else dy_abs;
+
+        const dx = if (x0 < x1) x1 - x0 else x0 - x1;
+        const sx: i32 = if (x0 < x1) 1 else -1;
+        const dy = -if (y0 < y1) y1 - y0 else y0 - y1;
+        const sy: i32 = if (y0 < y1) 1 else -1;
+
+        var err = dx + dy;
+        var step: u32 = 0;
+
+        while (true) {
+            self.putPixel(x0, y0, mixLineColor(c0, c1, step, steps));
+
+            if (x0 == x1 and y0 == y1) break;
+
+            const e2 = err * 2;
+            if (e2 >= dy) {
+                err += dy;
+                x0 += sx;
+            }
+            if (e2 <= dx) {
+                err += dx;
+                y0 += sy;
+            }
+
+            if (step < steps) step += 1;
         }
     }
 
