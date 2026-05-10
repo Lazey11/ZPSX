@@ -58,6 +58,11 @@ pub const Gpu = struct {
     gp0_sprite_index: u8 = 0,
     gp0_sprite_active: bool = false,
 
+    gp0_fixed_rect_color: u16 = 0,
+    gp0_fixed_rect_w: u32 = 0,
+    gp0_fixed_rect_h: u32 = 0,
+    gp0_fixed_rect_active: bool = false,
+
     draw_area_left: i32 = 0,
     draw_area_top: i32 = 0,
     draw_area_right: i32 = 1023,
@@ -267,6 +272,21 @@ pub const Gpu = struct {
             return;
         }
 
+        if (self.gp0_fixed_rect_active) {
+            const x = xyX(value) + self.draw_offset_x;
+            const y = xyY(value) + self.draw_offset_y;
+
+            self.drawFilledRect(
+                x,
+                y,
+                self.gp0_fixed_rect_w,
+                self.gp0_fixed_rect_h,
+                self.gp0_fixed_rect_color,
+            );
+            self.gp0_fixed_rect_active = false;
+            return;
+        }
+
         if (self.gp0_sprite_active) {
             self.gp0_sprite_words[self.gp0_sprite_index] = value;
             self.gp0_sprite_index += 1;
@@ -431,6 +451,30 @@ pub const Gpu = struct {
             0x68 => {
                 self.gp0_dot_color = rgb24ToRgb555(value);
                 self.gp0_dot_active = true;
+            },
+            0x70 => {
+                self.gp0_fixed_rect_color = rgb24ToRgb555(value);
+                self.gp0_fixed_rect_w = 8;
+                self.gp0_fixed_rect_h = 8;
+                self.gp0_fixed_rect_active = true;
+            },
+            0x72 => {
+                self.gp0_fixed_rect_color = rgb24ToRgb555(value);
+                self.gp0_fixed_rect_w = 8;
+                self.gp0_fixed_rect_h = 8;
+                self.gp0_fixed_rect_active = true;
+            },
+            0x78 => {
+                self.gp0_fixed_rect_color = rgb24ToRgb555(value);
+                self.gp0_fixed_rect_w = 16;
+                self.gp0_fixed_rect_h = 16;
+                self.gp0_fixed_rect_active = true;
+            },
+            0x7A => {
+                self.gp0_fixed_rect_color = rgb24ToRgb555(value);
+                self.gp0_fixed_rect_w = 16;
+                self.gp0_fixed_rect_h = 16;
+                self.gp0_fixed_rect_active = true;
             },
 
             0x7C => {
