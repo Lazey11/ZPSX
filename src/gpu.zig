@@ -53,6 +53,11 @@ pub const Gpu = struct {
     gp0_dot_color: u16 = 0,
     gp0_dot_active: bool = false,
 
+    gp0_sprite_color: u16 = 0,
+    gp0_sprite_words: [3]u32 = [_]u32{0} ** 3,
+    gp0_sprite_index: u8 = 0,
+    gp0_sprite_active: bool = false,
+
     draw_area_left: i32 = 0,
     draw_area_top: i32 = 0,
     draw_area_right: i32 = 1023,
@@ -235,6 +240,20 @@ pub const Gpu = struct {
         }
     }
 
+    fn drawFilledRect(self: *Gpu, x: i32, y: i32, w: u32, h: u32, color: u16) void {
+        var yy: u32 = 0;
+        while (yy < h) : (yy += 1) {
+            var xx: u32 = 0;
+            while (xx < w) : (xx += 1) {
+                self.putPixel(
+                    x + @as(i32, @intCast(xx)),
+                    y + @as(i32, @intCast(yy)),
+                    color,
+                );
+            }
+        }
+    }
+
     pub fn writeGp0(self: *Gpu, pc: u32, value: u32) void {
         const cmd: u8 = @intCast(value >> 24);
         self.gp0_last = value;
@@ -245,6 +264,26 @@ pub const Gpu = struct {
             const y = xyY(value) + self.draw_offset_y;
             self.putPixel(x, y, self.gp0_dot_color);
             self.gp0_dot_active = false;
+            return;
+        }
+
+        if (self.gp0_sprite_active) {
+            self.gp0_sprite_words[self.gp0_sprite_index] = value;
+            self.gp0_sprite_index += 1;
+
+            if (self.gp0_sprite_index == 3) {
+                const xy = self.gp0_sprite_words[0];
+                const size = self.gp0_sprite_words[2];
+
+                const x = xyX(xy) + self.draw_offset_x;
+                const y = xyY(xy) + self.draw_offset_y;
+                const w: u32 = @intCast(size & 0xFFFF);
+                const h: u32 = @intCast((size >> 16) & 0xFFFF);
+
+                self.drawFilledRect(x, y, w, h, self.gp0_sprite_color);
+                self.gp0_sprite_active = false;
+                self.gp0_sprite_index = 0;
+            }
             return;
         }
 
@@ -369,13 +408,15 @@ pub const Gpu = struct {
             },
 
             0x64 => {
-                // std.debug.print("GP0 SPRITE 0x64 value=0x{X:0>8}\n", .{value});
-                self.gp0_skip_words = 3;
+                self.gp0_sprite_color = rgb24ToRgb555(value);
+                self.gp0_sprite_active = true;
+                self.gp0_sprite_index = 0;
             },
 
             0x65 => {
-                //   std.debug.print("GP0 SPRITE 0x65 value=0x{X:0>8}\n", .{value});
-                self.gp0_skip_words = 3;
+                self.gp0_sprite_color = rgb24ToRgb555(value);
+                self.gp0_sprite_active = true;
+                self.gp0_sprite_index = 0;
             },
 
             0x68 => {
