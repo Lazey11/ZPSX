@@ -38,6 +38,11 @@ pub const Gpu = struct {
     gp0_shaded_line_index: u8 = 0,
     gp0_shaded_line_active: bool = false,
 
+    gp0_tri_active: bool = false,
+    gp0_tri_color: u16 = 0,
+    gp0_tri_vertices: [3]u32 = [_]u32{0} ** 3,
+    gp0_tri_vertex_index: u8 = 0,
+
     gp0_line_color: u16 = 0,
     gp0_line_words: [2]u32 = [_]u32{0} ** 2,
     gp0_line_index: u8 = 0,
@@ -533,6 +538,27 @@ pub const Gpu = struct {
             return;
         }
 
+        if (self.gp0_tri_active) {
+            self.gp0_tri_vertices[self.gp0_tri_vertex_index] = value;
+            self.gp0_tri_vertex_index += 1;
+
+            if (self.gp0_tri_vertex_index == 3) {
+                const x0 = vertexX(self.gp0_tri_vertices[0]) + self.draw_offset_x;
+                const y0 = vertexY(self.gp0_tri_vertices[0]) + self.draw_offset_y;
+                const x1 = vertexX(self.gp0_tri_vertices[1]) + self.draw_offset_x;
+                const y1 = vertexY(self.gp0_tri_vertices[1]) + self.draw_offset_y;
+                const x2 = vertexX(self.gp0_tri_vertices[2]) + self.draw_offset_x;
+                const y2 = vertexY(self.gp0_tri_vertices[2]) + self.draw_offset_y;
+
+                self.drawFilledTriangle(x0, y0, x1, y1, x2, y2, self.gp0_tri_color);
+
+                self.gp0_tri_active = false;
+                self.gp0_tri_vertex_index = 0;
+            }
+
+            return;
+        }
+
         if (self.gp0_shaded_quad_active) {
             self.gp0_shaded_quad_words[self.gp0_shaded_quad_index] = value;
             self.gp0_shaded_quad_index += 1;
@@ -761,18 +787,23 @@ pub const Gpu = struct {
                 self.gp0_vram_fill_active = true;
                 self.gp0_vram_fill_index = 0;
             },
-            0x28 => {
+            0x20, 0x22 => {
+                self.gp0_tri_color = rgb24ToRgb555(value);
+                self.gp0_tri_active = true;
+                self.gp0_tri_vertex_index = 0;
+            },
+            0x28, 0x2A => {
                 //std.debug.print("GP0 QUAD 0x28 color=0x{X:0>6}\n", .{value & 0x00FF_FFFF});
                 self.gp0_quad_color = rgb24ToRgb555(value);
                 self.gp0_quad_active = true;
                 self.gp0_quad_vertex_index = 0;
             },
-            0x30 => {
+            0x30, 0x32 => {
                 self.gp0_shaded_tri_color = rgb24ToRgb555(value);
                 self.gp0_shaded_tri_active = true;
                 self.gp0_shaded_tri_index = 0;
             },
-            0x38 => {
+            0x38, 0x3A => {
                 self.gp0_shaded_quad_color = rgb24ToRgb555(value);
                 self.gp0_shaded_quad_active = true;
                 self.gp0_shaded_quad_index = 0;
