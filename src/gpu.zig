@@ -499,8 +499,11 @@ pub const Gpu = struct {
                 const x2 = xyX(xy2) + self.draw_offset_x;
                 const y2 = xyY(xy2) + self.draw_offset_y;
 
-                self.drawFilledTriangle(x0, y0, x1, y1, x2, y2, self.gp0_shaded_tri_color);
+                const c0 = self.gp0_shaded_tri_color;
+                const c1 = rgb24ToRgb555(self.gp0_shaded_tri_words[1]);
+                const c2 = rgb24ToRgb555(self.gp0_shaded_tri_words[3]);
 
+                self.drawGouraudTriangle(x0, y0, c0, x1, y1, c1, x2, y2, c2);
                 self.gp0_shaded_tri_active = false;
                 self.gp0_shaded_tri_index = 0;
             }
@@ -527,8 +530,13 @@ pub const Gpu = struct {
                 const x3 = xyX(xy3) + self.draw_offset_x;
                 const y3 = xyY(xy3) + self.draw_offset_y;
 
-                self.drawFilledTriangle(x0, y0, x1, y1, x2, y2, self.gp0_shaded_quad_color);
-                self.drawFilledTriangle(x1, y1, x2, y2, x3, y3, self.gp0_shaded_quad_color);
+                const c0 = self.gp0_shaded_quad_color;
+                const c1 = rgb24ToRgb555(self.gp0_shaded_quad_words[1]);
+                const c2 = rgb24ToRgb555(self.gp0_shaded_quad_words[3]);
+                const c3 = rgb24ToRgb555(self.gp0_shaded_quad_words[5]);
+
+                self.drawGouraudTriangle(x0, y0, c0, x1, y1, c1, x2, y2, c2);
+                self.drawGouraudTriangle(x1, y1, c1, x2, y2, c2, x3, y3, c3);
 
                 self.gp0_shaded_quad_active = false;
                 self.gp0_shaded_quad_index = 0;
@@ -866,6 +874,96 @@ pub const Gpu = struct {
 
                 if (inside) {
                     self.putPixel(x, y, color);
+                }
+            }
+        }
+    }
+    fn rgb555R(color: u16) u32 {
+        return color & 0x1F;
+    }
+
+    fn rgb555G(color: u16) u32 {
+        return (color >> 5) & 0x1F;
+    }
+
+    fn rgb555B(color: u16) u32 {
+        return (color >> 10) & 0x1F;
+    }
+
+    fn mixRgb555(c0: u16, c1: u16, c2: u16, w0: u64, w1: u64, w2: u64, area: u64) u16 {
+        const r = (rgb555R(c0) * w0 + rgb555R(c1) * w1 + rgb555R(c2) * w2) / area;
+        const g = (rgb555G(c0) * w0 + rgb555G(c1) * w1 + rgb555G(c2) * w2) / area;
+        const b = (rgb555B(c0) * w0 + rgb555B(c1) * w1 + rgb555B(c2) * w2) / area;
+
+        return @intCast(r | (g << 5) | (b << 10));
+    }
+
+    fn drawGouraudTriangle(
+        self: *Gpu,
+        x0: i32,
+        y0: i32,
+        c0: u16,
+        x1: i32,
+        y1: i32,
+        c1: u16,
+        x2: i32,
+        y2: i32,
+        c2: u16,
+    ) void {
+        var min_x = x0;
+        var max_x = x0;
+        var min_y = y0;
+        var max_y = y0;
+
+        if (x1 < min_x) min_x = x1;
+        if (x1 > max_x) max_x = x1;
+        if (y1 < min_y) min_y = y1;
+        if (y1 > max_y) max_y = y1;
+
+        if (x2 < min_x) min_x = x2;
+        if (x2 > max_x) max_x = x2;
+        if (y2 < min_y) min_y = y2;
+        if (y2 > max_y) max_y = y2;
+
+        if (max_x < 0 or max_y < 0 or min_x >= 1024 or min_y >= 512) return;
+
+        if (min_x < 0) min_x = 0;
+        if (min_y < 0) min_y = 0;
+        if (max_x > 1023) max_x = 1023;
+        if (max_y > 511) max_y = 511;
+
+        if (min_x < self.draw_area_left) min_x = self.draw_area_left;
+        if (min_y < self.draw_area_top) min_y = self.draw_area_top;
+        if (max_x > self.draw_area_right) max_x = self.draw_area_right;
+        if (max_y > self.draw_area_bottom) max_y = self.draw_area_bottom;
+
+        if (max_x < min_x or max_y < min_y) return;
+
+        const area = edgeFunction(x0, y0, x1, y1, x2, y2);
+        if (area == 0) return;
+
+        const area_abs: u64 = @intCast(if (area > 0) area else -area);
+
+        var y: i32 = min_y;
+        while (y <= max_y) : (y += 1) {
+            var x: i32 = min_x;
+            while (x <= max_x) : (x += 1) {
+                const ew0 = edgeFunction(x1, y1, x2, y2, x, y);
+                const ew1 = edgeFunction(x2, y2, x0, y0, x, y);
+                const ew2 = edgeFunction(x0, y0, x1, y1, x, y);
+
+                const inside =
+                    if (area > 0)
+                        (ew0 >= 0 and ew1 >= 0 and ew2 >= 0)
+                    else
+                        (ew0 <= 0 and ew1 <= 0 and ew2 <= 0);
+
+                if (inside) {
+                    const w0: u64 = @intCast(if (area > 0) ew0 else -ew0);
+                    const w1: u64 = @intCast(if (area > 0) ew1 else -ew1);
+                    const w2: u64 = @intCast(if (area > 0) ew2 else -ew2);
+
+                    self.putPixel(x, y, mixRgb555(c0, c1, c2, w0, w1, w2, area_abs));
                 }
             }
         }
