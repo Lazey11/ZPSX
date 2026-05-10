@@ -743,22 +743,28 @@ pub const Gpu = struct {
         const signed: i16 = @bitCast(raw);
         return @as(i32, signed);
     }
-    fn drawFilledQuadBBox(self: *Gpu) void {
-        var min_x = vertexX(self.gp0_quad_vertices[0]) + self.draw_offset_x;
-        var max_x = min_x;
-        var min_y = vertexY(self.gp0_quad_vertices[0]) + self.draw_offset_y;
-        var max_y = min_y;
-        var i: usize = 1;
 
-        while (i < 4) : (i += 1) {
-            const x = vertexX(self.gp0_quad_vertices[i]) + self.draw_offset_x;
-            const y = vertexY(self.gp0_quad_vertices[i]) + self.draw_offset_y;
+    fn edgeFunction(ax: i32, ay: i32, bx: i32, by: i32, px: i32, py: i32) i64 {
+        return @as(i64, bx - ax) * @as(i64, py - ay) -
+            @as(i64, by - ay) * @as(i64, px - ax);
+    }
 
-            if (x < min_x) min_x = x;
-            if (x > max_x) max_x = x;
-            if (y < min_y) min_y = y;
-            if (y > max_y) max_y = y;
-        }
+    fn drawFilledTriangle(self: *Gpu, x0: i32, y0: i32, x1: i32, y1: i32, x2: i32, y2: i32, color: u16) void {
+        var min_x = x0;
+        var max_x = x0;
+        var min_y = y0;
+        var max_y = y0;
+
+        if (x1 < min_x) min_x = x1;
+        if (x1 > max_x) max_x = x1;
+        if (y1 < min_y) min_y = y1;
+        if (y1 > max_y) max_y = y1;
+
+        if (x2 < min_x) min_x = x2;
+        if (x2 > max_x) max_x = x2;
+        if (y2 < min_y) min_y = y2;
+        if (y2 > max_y) max_y = y2;
+
         if (max_x < 0 or max_y < 0 or min_x >= 1024 or min_y >= 512) return;
 
         if (min_x < 0) min_x = 0;
@@ -773,14 +779,42 @@ pub const Gpu = struct {
 
         if (max_x < min_x or max_y < min_y) return;
 
+        const area = edgeFunction(x0, y0, x1, y1, x2, y2);
+        if (area == 0) return;
+
         var y: i32 = min_y;
         while (y <= max_y) : (y += 1) {
             var x: i32 = min_x;
             while (x <= max_x) : (x += 1) {
-                const idx: usize = @intCast(@as(u32, @intCast(y)) * 1024 + @as(u32, @intCast(x)));
-                self.vram[idx] = self.gp0_quad_color;
+                const w0 = edgeFunction(x1, y1, x2, y2, x, y);
+                const w1 = edgeFunction(x2, y2, x0, y0, x, y);
+                const w2 = edgeFunction(x0, y0, x1, y1, x, y);
+
+                const inside =
+                    if (area > 0)
+                        (w0 >= 0 and w1 >= 0 and w2 >= 0)
+                    else
+                        (w0 <= 0 and w1 <= 0 and w2 <= 0);
+
+                if (inside) {
+                    self.putPixel(x, y, color);
+                }
             }
         }
+    }
+
+    fn drawFilledQuadBBox(self: *Gpu) void {
+        const x0 = vertexX(self.gp0_quad_vertices[0]) + self.draw_offset_x;
+        const y0 = vertexY(self.gp0_quad_vertices[0]) + self.draw_offset_y;
+        const x1 = vertexX(self.gp0_quad_vertices[1]) + self.draw_offset_x;
+        const y1 = vertexY(self.gp0_quad_vertices[1]) + self.draw_offset_y;
+        const x2 = vertexX(self.gp0_quad_vertices[2]) + self.draw_offset_x;
+        const y2 = vertexY(self.gp0_quad_vertices[2]) + self.draw_offset_y;
+        const x3 = vertexX(self.gp0_quad_vertices[3]) + self.draw_offset_x;
+        const y3 = vertexY(self.gp0_quad_vertices[3]) + self.draw_offset_y;
+
+        self.drawFilledTriangle(x0, y0, x1, y1, x2, y2, self.gp0_quad_color);
+        self.drawFilledTriangle(x1, y1, x2, y2, x3, y3, self.gp0_quad_color);
     }
 
     pub fn writeGp1(self: *Gpu, pc: u32, value: u32) void {
