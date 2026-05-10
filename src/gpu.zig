@@ -28,6 +28,11 @@ pub const Gpu = struct {
     gp0_shaded_tri_index: u8 = 0,
     gp0_shaded_tri_active: bool = false,
 
+    gp0_polyline_color: u16 = 0,
+    gp0_polyline_last_xy: u32 = 0,
+    gp0_polyline_have_last: bool = false,
+    gp0_polyline_active: bool = false,
+
     gp0_line_color: u16 = 0,
     gp0_line_words: [2]u32 = [_]u32{0} ** 2,
     gp0_line_index: u8 = 0,
@@ -571,6 +576,31 @@ pub const Gpu = struct {
 
             return;
         }
+        if (self.gp0_polyline_active) {
+            if (value == 0x5555_5555 or value == 0x5000_5000) {
+                self.gp0_polyline_active = false;
+                self.gp0_polyline_have_last = false;
+                return;
+            }
+
+            if (!self.gp0_polyline_have_last) {
+                self.gp0_polyline_last_xy = value;
+                self.gp0_polyline_have_last = true;
+                return;
+            }
+
+            const xy0 = self.gp0_polyline_last_xy;
+            const xy1 = value;
+
+            const x0 = xyX(xy0) + self.draw_offset_x;
+            const y0 = xyY(xy0) + self.draw_offset_y;
+            const x1 = xyX(xy1) + self.draw_offset_x;
+            const y1 = xyY(xy1) + self.draw_offset_y;
+
+            self.drawLine(x0, y0, x1, y1, self.gp0_polyline_color);
+            self.gp0_polyline_last_xy = value;
+            return;
+        }
 
         if (self.gp0_skip_words > 0) {
             self.gp0_skip_words -= 1;
@@ -671,6 +701,11 @@ pub const Gpu = struct {
                 self.gp0_line_color = rgb24ToRgb555(value);
                 self.gp0_line_active = true;
                 self.gp0_line_index = 0;
+            },
+            0x48, 0x4A => {
+                self.gp0_polyline_color = rgb24ToRgb555(value);
+                self.gp0_polyline_active = true;
+                self.gp0_polyline_have_last = false;
             },
             0x2C => {
                 self.gp0_textured_quad_color = value;
