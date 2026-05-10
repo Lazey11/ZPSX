@@ -161,6 +161,35 @@ pub const Gpu = struct {
         return self.vram[@intCast(clut_y * 1024 + clut_x + index)];
     }
 
+    fn sampleTexture8BitClut(self: *const Gpu, tex_base_x: u32, tex_base_y: u32, clut_x: u32, clut_y: u32, u: u32, v: u32) u16 {
+        const tex_x = tex_base_x + (u / 2);
+        const tex_y = tex_base_y + v;
+        if (tex_x >= 1024 or tex_y >= 512) return 0;
+        if (clut_x >= 1024 or clut_y >= 512) return 0;
+
+        const _packed = self.vram[@intCast(tex_y * 1024 + tex_x)];
+        const shift: u4 = if ((u & 1) == 0) 0 else 8;
+        const index: u32 = (_packed >> shift) & 0xFF;
+
+        return self.vram[@intCast(clut_y * 1024 + clut_x + index)];
+    }
+
+    fn sampleTexture15Bit(self: *const Gpu, tex_base_x: u32, tex_base_y: u32, u: u32, v: u32) u16 {
+        const tex_x = tex_base_x + u;
+        const tex_y = tex_base_y + v;
+        if (tex_x >= 1024 or tex_y >= 512) return 0;
+
+        return self.vram[@intCast(tex_y * 1024 + tex_x)];
+    }
+
+    fn sampleTexture(self: *const Gpu, tex_base_x: u32, tex_base_y: u32, clut_x: u32, clut_y: u32, u: u32, v: u32) u16 {
+        return switch (textureMode(self.draw_mode)) {
+            0 => self.sampleTexture4BitClut(tex_base_x, tex_base_y, clut_x, clut_y, u, v),
+            1 => self.sampleTexture8BitClut(tex_base_x, tex_base_y, clut_x, clut_y, u, v),
+            2 => self.sampleTexture15Bit(tex_base_x, tex_base_y, u, v),
+            else => 0,
+        };
+    }
     fn drawTexturedQuad2C(self: *Gpu) void {
         const xy0_word = self.gp0_textured_quad_words[0];
         const uv0_word = self.gp0_textured_quad_words[1];
@@ -223,12 +252,6 @@ pub const Gpu = struct {
 
         const tex_base_x = texturePageBaseX(self.draw_mode);
         const tex_base_y = texturePageBaseY(self.draw_mode);
-        const tex_mode = textureMode(self.draw_mode);
-
-        if (tex_mode != 0) {
-            // BIOS logo packets here use 4-bit CLUT. Leave other modes for later.
-            return;
-        }
 
         const dst_w_i = max_x - min_x + 1;
         const dst_h_i = max_y - min_y + 1;
@@ -247,8 +270,7 @@ pub const Gpu = struct {
                 const tu = tex_u0 + (dx * tex_w) / dst_w;
                 const tv = tex_v0 + (dy * tex_h) / dst_h;
 
-                const px = self.sampleTexture4BitClut(tex_base_x, tex_base_y, clx, cly, tu, tv);
-
+                const px = self.sampleTexture(tex_base_x, tex_base_y, clx, cly, tu, tv);
                 // In PS1 textured drawing, palette index/color 0 often acts transparent depending mode.
                 // For BIOS logo this is useful; later make this respect transparency/semi-transparency rules.
 
@@ -285,16 +307,12 @@ pub const Gpu = struct {
 
         const tex_base_x = texturePageBaseX(self.draw_mode);
         const tex_base_y = texturePageBaseY(self.draw_mode);
-        const tex_mode = textureMode(self.draw_mode);
 
-        if (tex_mode != 0) {
-            return;
-        }
         var yy: u32 = 0;
         while (yy < h) : (yy += 1) {
             var xx: u32 = 0;
             while (xx < w) : (xx += 1) {
-                const px = self.sampleTexture4BitClut(
+                const px = self.sampleTexture(
                     tex_base_x,
                     tex_base_y,
                     clx,
