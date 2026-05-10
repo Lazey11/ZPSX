@@ -23,6 +23,16 @@ pub const Gpu = struct {
     gp0_quad_vertices: [4]u32 = [_]u32{0} ** 4,
     gp0_quad_vertex_index: u8 = 0,
 
+    gp0_shaded_tri_color: u16 = 0,
+    gp0_shaded_tri_words: [5]u32 = [_]u32{0} ** 5,
+    gp0_shaded_tri_index: u8 = 0,
+    gp0_shaded_tri_active: bool = false,
+
+    gp0_shaded_quad_color: u16 = 0,
+    gp0_shaded_quad_words: [7]u32 = [_]u32{0} ** 7,
+    gp0_shaded_quad_index: u8 = 0,
+    gp0_shaded_quad_active: bool = false,
+
     vram: [1024 * 512]u16 = [_]u16{0} ** (1024 * 512),
 
     vram_x: u16 = 0,
@@ -473,6 +483,60 @@ pub const Gpu = struct {
             return;
         }
 
+        if (self.gp0_shaded_tri_active) {
+            self.gp0_shaded_tri_words[self.gp0_shaded_tri_index] = value;
+            self.gp0_shaded_tri_index += 1;
+
+            if (self.gp0_shaded_tri_index == 5) {
+                const xy0 = self.gp0_shaded_tri_words[0];
+                const xy1 = self.gp0_shaded_tri_words[2];
+                const xy2 = self.gp0_shaded_tri_words[4];
+
+                const x0 = xyX(xy0) + self.draw_offset_x;
+                const y0 = xyY(xy0) + self.draw_offset_y;
+                const x1 = xyX(xy1) + self.draw_offset_x;
+                const y1 = xyY(xy1) + self.draw_offset_y;
+                const x2 = xyX(xy2) + self.draw_offset_x;
+                const y2 = xyY(xy2) + self.draw_offset_y;
+
+                self.drawFilledTriangle(x0, y0, x1, y1, x2, y2, self.gp0_shaded_tri_color);
+
+                self.gp0_shaded_tri_active = false;
+                self.gp0_shaded_tri_index = 0;
+            }
+
+            return;
+        }
+
+        if (self.gp0_shaded_quad_active) {
+            self.gp0_shaded_quad_words[self.gp0_shaded_quad_index] = value;
+            self.gp0_shaded_quad_index += 1;
+
+            if (self.gp0_shaded_quad_index == 7) {
+                const xy0 = self.gp0_shaded_quad_words[0];
+                const xy1 = self.gp0_shaded_quad_words[2];
+                const xy2 = self.gp0_shaded_quad_words[4];
+                const xy3 = self.gp0_shaded_quad_words[6];
+
+                const x0 = xyX(xy0) + self.draw_offset_x;
+                const y0 = xyY(xy0) + self.draw_offset_y;
+                const x1 = xyX(xy1) + self.draw_offset_x;
+                const y1 = xyY(xy1) + self.draw_offset_y;
+                const x2 = xyX(xy2) + self.draw_offset_x;
+                const y2 = xyY(xy2) + self.draw_offset_y;
+                const x3 = xyX(xy3) + self.draw_offset_x;
+                const y3 = xyY(xy3) + self.draw_offset_y;
+
+                self.drawFilledTriangle(x0, y0, x1, y1, x2, y2, self.gp0_shaded_quad_color);
+                self.drawFilledTriangle(x1, y1, x2, y2, x3, y3, self.gp0_shaded_quad_color);
+
+                self.gp0_shaded_quad_active = false;
+                self.gp0_shaded_quad_index = 0;
+            }
+
+            return;
+        }
+
         if (self.gp0_skip_words > 0) {
             self.gp0_skip_words -= 1;
             return;
@@ -559,10 +623,14 @@ pub const Gpu = struct {
                 self.gp0_quad_vertex_index = 0;
             },
             0x30 => {
-                self.gp0_skip_words = 5;
+                self.gp0_shaded_tri_color = rgb24ToRgb555(value);
+                self.gp0_shaded_tri_active = true;
+                self.gp0_shaded_tri_index = 0;
             },
             0x38 => {
-                self.gp0_skip_words = 7;
+                self.gp0_shaded_quad_color = rgb24ToRgb555(value);
+                self.gp0_shaded_quad_active = true;
+                self.gp0_shaded_quad_index = 0;
             },
             0x2C => {
                 self.gp0_textured_quad_color = value;
