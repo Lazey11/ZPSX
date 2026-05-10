@@ -105,6 +105,17 @@ pub fn updateScreen(sdl: *SDL, config: *displayConfig) !void {
     }
 }
 
+fn displayWidthScale(display_mode: u32) u32 {
+    const hres = display_mode & 0x3;
+    return switch (hres) {
+        0 => 2,
+        1 => 2,
+        2 => 1,
+        3 => 1,
+        else => 2,
+    };
+}
+
 pub fn drawVramToScreen(sdl: *SDL, config: *displayConfig, gpu: *const gpu_f.Gpu) !void {
     var pixel_raw: ?*anyopaque = null;
     var pitch: c_int = 0;
@@ -116,6 +127,8 @@ pub fn drawVramToScreen(sdl: *SDL, config: *displayConfig, gpu: *const gpu_f.Gpu
     defer C.SDL_UnlockTexture(sdl.texture.?);
     const pixels_byte: [*]u8 = @ptrCast(pixel_raw.?);
 
+    const x_scale = displayWidthScale(gpu.display_mode);
+
     var y: u32 = 0;
     while (y < config.windowHeight) : (y += 1) {
         const row_bytes = pixels_byte + @as(usize, @intCast(y * @as(u32, @intCast(pitch))));
@@ -123,7 +136,7 @@ pub fn drawVramToScreen(sdl: *SDL, config: *displayConfig, gpu: *const gpu_f.Gpu
 
         var x: u32 = 0;
         while (x < config.windowWidth) : (x += 1) {
-            const src_x = @as(u32, gpu.display_x) + (x / 2);
+            const src_x = @as(u32, gpu.display_x) + (x / x_scale);
             const src_y = @as(u32, gpu.display_y) + (y / 2);
 
             var argb: u32 = 0xFF000000;
