@@ -912,7 +912,7 @@ pub const Gpu = struct {
                 self.gp0_shaded_polyline_have_last = false;
                 self.gp0_shaded_polyline_need_xy = true;
             },
-            0x34 => {
+            0x34, 0x36 => {
                 self.gp0_shaded_textured_tri_active = true;
                 self.gp0_shaded_textured_tri_index = 0;
                 return;
