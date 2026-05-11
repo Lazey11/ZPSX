@@ -147,10 +147,7 @@ pub fn drawVramToScreen(sdl: *SDL, config: *displayConfig, gpu: *const gpu_f.Gpu
 
         var x: u32 = 0;
         while (x < config.windowWidth) : (x += 1) {
-            const x_scale: u32 = if (displayIs24Bpp(gpu.display_mode))
-                1
-            else
-                displayWidthScale(gpu.display_mode);
+            const x_scale = displayWidthScale(gpu.display_mode);
             const display_px = x / x_scale;
             const src_x = @as(u32, gpu.display_x) + display_px;
             const src_y = @as(u32, gpu.display_y) + (y / 2);
