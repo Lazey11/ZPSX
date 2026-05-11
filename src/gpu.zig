@@ -18,6 +18,8 @@ pub const Gpu = struct {
     gp0_words_remaining: u32 = 0,
     gp0_skip_words: u32 = 0,
     texture_window: u32 = 0,
+    mask_set_on_draw: bool = false,
+    mask_check_before_draw: bool = false,
 
     gp0_quad_active: bool = false,
     gp0_quad_color: u16 = 0,
@@ -388,7 +390,11 @@ pub const Gpu = struct {
                 const dst_x: u32 = @intCast(min_x + @as(i32, @intCast(dx)));
                 const dst_y: u32 = @intCast(min_y + @as(i32, @intCast(dy)));
 
-                self.vram[@intCast(dst_y * 1024 + dst_x)] = px;
+                self.putPixel(
+                    @intCast(dst_x),
+                    @intCast(dst_y),
+                    px,
+                );
             }
         }
     }
@@ -1108,7 +1114,10 @@ pub const Gpu = struct {
                 self.draw_offset_x = ox;
                 self.draw_offset_y = oy;
             }, // drawing offset
-            0xE6 => {}, // mask bit setting
+            0xE6 => {
+                self.mask_set_on_draw = (value & 1) != 0;
+                self.mask_check_before_draw = (value & 2) != 0;
+            }, // mask bit setting
 
             0xA0 => {
                 self.gp0_mode = 1;
@@ -1204,7 +1213,16 @@ pub const Gpu = struct {
 
         const ux: u32 = @intCast(x);
         const uy: u32 = @intCast(y);
-        self.vram[@intCast(uy * 1024 + ux)] = color;
+
+        const index: usize = @intCast(uy * 1024 + ux);
+        if (self.mask_check_before_draw and (self.vram[index] & 0x8000) != 0) {
+            return;
+        }
+        var out_color = color;
+        if (self.mask_set_on_draw) {
+            out_color |= 0x8000;
+        }
+        self.vram[index] = out_color;
     }
     fn drawLine(self: *Gpu, x0_in: i32, y0_in: i32, x1_in: i32, y1_in: i32, color: u16) void {
         var x0 = x0_in;
