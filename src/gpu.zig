@@ -338,7 +338,7 @@ pub const Gpu = struct {
         }
     }
 
-    fn drawTexturedRect4Bit(self: *Gpu, x: i32, y: i32, uv_word: u32, w: u32, h: u32) void {
+    fn drawTexturedRect(self: *Gpu, x: i32, y: i32, uv_word: u32, w: u32, h: u32) void {
         const tex_u0 = uvU(uv_word);
         const tex_v0 = uvV(uv_word);
         const clx = clutX(uv_word);
@@ -429,7 +429,7 @@ pub const Gpu = struct {
                 const w: u32 = @intCast(size & 0xFFFF);
                 const h: u32 = @intCast((size >> 16) & 0xFFFF);
 
-                self.drawTexturedRect4Bit(x, y, uv, w, h);
+                self.drawTexturedRect(x, y, uv, w, h);
 
                 self.gp0_textured_rect_active = false;
                 self.gp0_textured_rect_index = 0;
@@ -449,7 +449,7 @@ pub const Gpu = struct {
                 const x = xyX(xy) + self.draw_offset_x;
                 const y = xyY(xy) + self.draw_offset_y;
 
-                self.drawTexturedRect4Bit(
+                self.drawTexturedRect(
                     x,
                     y,
                     uv,
