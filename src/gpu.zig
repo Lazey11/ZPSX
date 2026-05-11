@@ -130,6 +130,10 @@ pub const Gpu = struct {
     gp0_fixed_textured_rect_h: u32 = 0,
     gp0_fixed_textured_rect_active: bool = false,
 
+    gp0_vram_copy_words: [3]u32 = [_]u32{0} ** 3,
+    gp0_vram_copy_index: u8 = 0,
+    gp0_vram_copy_active: bool = false,
+
     draw_area_left: i32 = 0,
     draw_area_top: i32 = 0,
     draw_area_right: i32 = 1023,
@@ -410,6 +414,24 @@ pub const Gpu = struct {
             const y = xyY(value) + self.draw_offset_y;
             self.putPixel(x, y, self.gp0_dot_color);
             self.gp0_dot_active = false;
+            return;
+        }
+
+        if (self.gp0_vram_copy_active) {
+            self.gp0_vram_copy_words[self.gp0_vram_copy_index] = value;
+            self.gp0_vram_copy_index += 1;
+
+            if (self.gp0_vram_copy_index == 3) {
+                self.copyVramRect(
+                    self.gp0_vram_copy_words[0],
+                    self.gp0_vram_copy_words[1],
+                    self.gp0_vram_copy_words[2],
+                );
+
+                self.gp0_vram_copy_active = false;
+                self.gp0_vram_copy_index = 0;
+            }
+
             return;
         }
 
@@ -1000,6 +1022,10 @@ pub const Gpu = struct {
                 self.gp0_fixed_rect_h = 16;
                 self.gp0_fixed_rect_active = true;
             },
+            0x80 => {
+                self.gp0_vram_copy_active = true;
+                self.gp0_vram_copy_index = 0;
+            },
             0x7A => {
                 self.gp0_fixed_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_rect_w = 16;
@@ -1103,6 +1129,35 @@ pub const Gpu = struct {
         }
 
         self.image_index += 1;
+    }
+    fn copyVramRect(self: *Gpu, src_word: u32, dst_word: u32, size_word: u32) void {
+        const src_x: u32 = @intCast(src_word & 0xFFFF);
+        const src_y: u32 = @intCast((src_word >> 16) & 0xFFFF);
+        const dst_x: u32 = @intCast(dst_word & 0xFFFF);
+        const dst_y: u32 = @intCast((dst_word >> 16) & 0xFFFF);
+
+        var w: u32 = @intCast(size_word & 0xFFFF);
+        var h: u32 = @intCast((size_word >> 16) & 0xFFFF);
+
+        if (w == 0) w = 1024;
+        if (h == 0) h = 512;
+
+        var yy: u32 = 0;
+        while (yy < h) : (yy += 1) {
+            var xx: u32 = 0;
+            while (xx < w) : (xx += 1) {
+                const sx = src_x + xx;
+                const sy = src_y + yy;
+                const dx = dst_x + xx;
+                const dy = dst_y + yy;
+
+                if (sx >= 1024 or sy >= 512) continue;
+                if (dx >= 1024 or dy >= 512) continue;
+
+                const px = self.vram[@intCast(sy * 1024 + sx)];
+                self.vram[@intCast(dy * 1024 + dx)] = px;
+            }
+        }
     }
 
     fn putPixel(self: *Gpu, x: i32, y: i32, color: u16) void {
