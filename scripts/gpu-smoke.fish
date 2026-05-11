@@ -5,7 +5,10 @@ set tests \
     /home/user/psxtests/PSX/GPU/16BPP/RenderLine/RenderLine16BPP.exe \
     /home/user/psxtests/PSX/GPU/16BPP/RenderRectangle/RenderRectangle16BPP.exe \
     /home/user/psxtests/PSX/GPU/16BPP/RenderPolygon/RenderPolygon16BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderPolygonDither/RenderPolygonDither16BPP.exe
+    /home/user/psxtests/PSX/GPU/16BPP/RenderPolygonDither/RenderPolygonDither16BPP.exe \
+    /home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/CLUT4BPP/RenderTexturePolygonCLUT4BPP.exe \
+    /home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/CLUT8BPP/RenderTexturePolygonCLUT8BPP.exe \
+    /home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/15BPP/RenderTexturePolygon15BPP.exe
 
 if not test -f $bios
     echo "missing BIOS: $bios"
