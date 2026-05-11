@@ -17,6 +17,7 @@ pub const Gpu = struct {
     gp0_mode: u8 = 0, // 0=command, 1=A0 pos, 2=A0 size, 3=A0 data, 4=C0 pos, 5=C0 size
     gp0_words_remaining: u32 = 0,
     gp0_skip_words: u32 = 0,
+    texture_window: u32 = 0,
 
     gp0_quad_active: bool = false,
     gp0_quad_color: u16 = 0,
@@ -200,6 +201,37 @@ pub const Gpu = struct {
     fn textureMode(draw_mode: u32) u32 {
         return (draw_mode >> 7) & 0x3;
     }
+    fn textureWindowMaskX(texture_window: u32) u32 {
+        return texture_window & 0x1F;
+    }
+    fn textureWindowMaskY(texture_window: u32) u32 {
+        return (texture_window >> 5) & 0x1F;
+    }
+    fn textureWindowOffsetX(texture_window: u32) u32 {
+        return (texture_window >> 10) & 0x1F;
+    }
+    fn textureWindowOffsetY(texture_window: u32) u32 {
+        return (texture_window >> 15) & 0x1F;
+    }
+    fn applyTextureWindowCoord(coord: u32, mask: u32, offset: u32) u32 {
+        const mask_pixels = mask * 8;
+        const offset_pixels = (offset & mask) * 8;
+        return (coord & ~mask_pixels) | offset_pixels;
+    }
+    fn textureWindowU(self: *const Gpu, u: u32) u32 {
+        return applyTextureWindowCoord(
+            u,
+            textureWindowMaskX(self.texture_window),
+            textureWindowOffsetX(self.texture_window),
+        );
+    }
+    fn textureWindowV(self: *const Gpu, u: u32) u32 {
+        return applyTextureWindowCoord(
+            u,
+            textureWindowMaskY(self.texture_window),
+            textureWindowOffsetY(self.texture_window),
+        );
+    }
 
     fn sampleTexture4BitClut(self: *const Gpu, tex_base_x: u32, tex_base_y: u32, clut_x: u32, clut_y: u32, u: u32, v: u32) u16 {
         const tex_x = tex_base_x + (u / 4);
@@ -245,10 +277,12 @@ pub const Gpu = struct {
         u: u32,
         v: u32,
     ) u16 {
+        const window_u = self.textureWindowU(u);
+        const window_v = self.textureWindowV(v);
         return switch (tex_mode) {
-            0 => self.sampleTexture4BitClut(tex_base_x, tex_base_y, clut_x, clut_y, u, v),
-            1 => self.sampleTexture8BitClut(tex_base_x, tex_base_y, clut_x, clut_y, u, v),
-            2 => self.sampleTexture15Bit(tex_base_x, tex_base_y, u, v),
+            0 => self.sampleTexture4BitClut(tex_base_x, tex_base_y, clut_x, clut_y, window_u, window_v),
+            1 => self.sampleTexture8BitClut(tex_base_x, tex_base_y, clut_x, clut_y, window_u, window_v),
+            2 => self.sampleTexture15Bit(tex_base_x, tex_base_y, window_u, window_v),
             else => 0,
         };
     }
@@ -1049,7 +1083,9 @@ pub const Gpu = struct {
             0xE1 => {
                 self.draw_mode = value & 0x00FF_FFFF;
             }, // draw mode
-            0xE2 => {}, // texture window
+            0xE2 => {
+                self.texture_window = value & 0x00FF_FFFF;
+            }, // texture window
             0xE3 => {
                 const p = value & 0x00FF_FFFF;
                 self.draw_area_left = @intCast(p & 0x3FF);
