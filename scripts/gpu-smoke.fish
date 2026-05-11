@@ -1,0 +1,36 @@
+#!/usr/bin/env fish
+
+set bios /home/user/psxtests/PS1_BIOS/SCPH1001.bin
+set tests \
+    /home/user/psxtests/PSX/GPU/16BPP/RenderLine/RenderLine16BPP.exe \
+    /home/user/psxtests/PSX/GPU/16BPP/RenderRectangle/RenderRectangle16BPP.exe \
+    /home/user/psxtests/PSX/GPU/16BPP/RenderPolygon/RenderPolygon16BPP.exe \
+    /home/user/psxtests/PSX/GPU/16BPP/RenderPolygonDither/RenderPolygonDither16BPP.exe
+
+if not test -f $bios
+    echo "missing BIOS: $bios"
+    exit 1
+end
+
+zig build -Doptimize=ReleaseFast
+or exit 1
+
+for test in $tests
+    if not test -f $test
+        echo "missing test: $test"
+        exit 1
+    end
+
+    echo "GPU smoke: $test"
+
+    ./zig-out/bin/ZPSX $bios $test --headless --frames 120 2> debug.txt
+    or exit 1
+
+    if grep -q "UNSUPPORTED GP0" debug.txt
+        echo "unsupported GP0 found in $test"
+        grep "UNSUPPORTED GP0" debug.txt | sort | uniq -c | sort -nr | head -n 20
+        exit 1
+    end
+end
+
+echo "gpu smoke tests passed"
