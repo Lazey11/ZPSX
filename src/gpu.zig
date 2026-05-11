@@ -94,6 +94,10 @@ pub const Gpu = struct {
     gp0_textured_tri_words: [6]u32 = [_]u32{0} ** 6,
     gp0_textured_tri_index: u8 = 0,
 
+    gp0_shaded_textured_quad_active: bool = false,
+    gp0_shaded_textured_quad_words: [11]u32 = [_]u32{0} ** 11,
+    gp0_shaded_textured_quad_index: u8 = 0,
+
     gp0_shaded_textured_tri_active: bool = false,
     gp0_shaded_textured_tri_words: [8]u32 = [_]u32{0} ** 8,
     gp0_shaded_textured_tri_index: u8 = 0,
@@ -512,6 +516,30 @@ pub const Gpu = struct {
             }
             return;
         }
+        if (self.gp0_shaded_textured_quad_active) {
+            self.gp0_shaded_textured_quad_words[self.gp0_shaded_textured_quad_index] = value;
+            self.gp0_shaded_textured_quad_index += 1;
+
+            if (self.gp0_shaded_textured_quad_index == 11) {
+                // 0x3C packet after command:
+                // xy0, uv0, color1, xy1, uv1, color2, xy2, uv2, color3, xy3, uv3
+                self.gp0_textured_quad_words[0] = self.gp0_shaded_textured_quad_words[0];
+                self.gp0_textured_quad_words[1] = self.gp0_shaded_textured_quad_words[1];
+                self.gp0_textured_quad_words[2] = self.gp0_shaded_textured_quad_words[3];
+                self.gp0_textured_quad_words[3] = self.gp0_shaded_textured_quad_words[4];
+                self.gp0_textured_quad_words[4] = self.gp0_shaded_textured_quad_words[6];
+                self.gp0_textured_quad_words[5] = self.gp0_shaded_textured_quad_words[7];
+                self.gp0_textured_quad_words[6] = self.gp0_shaded_textured_quad_words[9];
+                self.gp0_textured_quad_words[7] = self.gp0_shaded_textured_quad_words[10];
+
+                self.drawTexturedQuad2C();
+
+                self.gp0_shaded_textured_quad_active = false;
+                self.gp0_shaded_textured_quad_index = 0;
+            }
+
+            return;
+        }
         if (self.gp0_shaded_textured_tri_active) {
             self.gp0_shaded_textured_tri_words[self.gp0_shaded_textured_tri_index] = value;
             self.gp0_shaded_textured_tri_index += 1;
@@ -915,6 +943,11 @@ pub const Gpu = struct {
             0x34, 0x36 => {
                 self.gp0_shaded_textured_tri_active = true;
                 self.gp0_shaded_textured_tri_index = 0;
+                return;
+            },
+            0x3C => {
+                self.gp0_shaded_textured_quad_active = true;
+                self.gp0_shaded_textured_quad_index = 0;
                 return;
             },
             0x2C, 0x2D, 0x2E, 0x2F => {
