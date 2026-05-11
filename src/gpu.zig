@@ -893,6 +893,7 @@ pub const Gpu = struct {
         switch (cmd) {
             0x00 => {}, // NOP
             0x01 => {}, // clear cache
+            0x03 => {}, // unknown/no-op
             0x02 => {
                 self.gp0_vram_fill_color = rgb24ToRgb555(value);
                 self.gp0_vram_fill_active = true;
