@@ -308,6 +308,7 @@ pub const Gpu = struct {
         const xy2_word = self.gp0_textured_quad_words[4];
         const uv2_word = self.gp0_textured_quad_words[5];
         const xy3_word = self.gp0_textured_quad_words[6];
+        const uv3_word = self.gp0_textured_quad_words[7];
 
         const x0 = xyX(xy0_word) + self.draw_offset_x;
         const y0 = xyY(xy0_word) + self.draw_offset_y;
@@ -318,85 +319,8 @@ pub const Gpu = struct {
         const x3 = xyX(xy3_word) + self.draw_offset_x;
         const y3 = xyY(xy3_word) + self.draw_offset_y;
 
-        var min_x = x0;
-        var max_x = x0;
-        var min_y = y0;
-        var max_y = y0;
-
-        if (x1 < min_x) min_x = x1;
-        if (x1 > max_x) max_x = x1;
-        if (y1 < min_y) min_y = y1;
-        if (y1 > max_y) max_y = y1;
-
-        if (x2 < min_x) min_x = x2;
-        if (x2 > max_x) max_x = x2;
-        if (y2 < min_y) min_y = y2;
-        if (y2 > max_y) max_y = y2;
-
-        if (x3 < min_x) min_x = x3;
-        if (x3 > max_x) max_x = x3;
-        if (y3 < min_y) min_y = y3;
-        if (y3 > max_y) max_y = y3;
-
-        if (max_x < 0 or max_y < 0 or min_x >= 1024 or min_y >= 512) return;
-
-        if (min_x < 0) min_x = 0;
-        if (min_y < 0) min_y = 0;
-        if (max_x > 1023) max_x = 1023;
-        if (max_y > 511) max_y = 511;
-
-        if (min_x < self.draw_area_left) min_x = self.draw_area_left;
-        if (min_y < self.draw_area_top) min_y = self.draw_area_top;
-        if (max_x > self.draw_area_right) max_x = self.draw_area_right;
-        if (max_y > self.draw_area_bottom) max_y = self.draw_area_bottom;
-
-        if (max_x < min_x or max_y < min_y) return;
-
-        const tex_u0 = uvU(uv0_word);
-        const tex_v0 = uvV(uv0_word);
-        const tex_u1 = uvU(uv1_word);
-        const tex_v2 = uvV(uv2_word);
-
-        const clx = clutX(uv0_word);
-        const cly = clutY(uv0_word);
-
-        const tex_base_x = texturePageBaseX(self.draw_mode);
-        const tex_base_y = texturePageBaseY(self.draw_mode);
-
-        const dst_w_i = max_x - min_x + 1;
-        const dst_h_i = max_y - min_y + 1;
-        if (dst_w_i <= 0 or dst_h_i <= 0) return;
-
-        const dst_w: u32 = @intCast(dst_w_i);
-        const dst_h: u32 = @intCast(dst_h_i);
-
-        const tex_w: u32 = if (tex_u1 >= tex_u0) (tex_u1 - tex_u0 + 1) else 1;
-        const tex_h: u32 = if (tex_v2 >= tex_v0) (tex_v2 - tex_v0 + 1) else 1;
-
-        var dy: u32 = 0;
-        while (dy < dst_h) : (dy += 1) {
-            var dx: u32 = 0;
-            while (dx < dst_w) : (dx += 1) {
-                const tu = tex_u0 + (dx * tex_w) / dst_w;
-                const tv = tex_v0 + (dy * tex_h) / dst_h;
-
-                const px = self.sampleTexture(tex_base_x, tex_base_y, clx, cly, tu, tv);
-                // In PS1 textured drawing, palette index/color 0 often acts transparent depending mode.
-                // For BIOS logo this is useful; later make this respect transparency/semi-transparency rules.
-
-                // TEMP: draw even px==0 for debugging? no, keep transparency.
-                if (px == 0) continue;
-
-                const dst_x: u32 = @intCast(min_x + @as(i32, @intCast(dx)));
-                const dst_y: u32 = @intCast(min_y + @as(i32, @intCast(dy)));
-
-                self.putPixel(
-                    @intCast(dst_x),
-                    @intCast(dst_y),
-                    px,
-                );
-            }
-        }
+        self.drawTexturedTriangleUsingDrawMode(x0, y0, uv0_word, x1, y1, uv1_word, x3, y3, uv3_word);
+        self.drawTexturedTriangleUsingDrawMode(x0, y0, uv0_word, x2, y2, uv2_word, x3, y3, uv3_word);
     }
 
     fn drawFilledRect(self: *Gpu, x: i32, y: i32, w: u32, h: u32, color: u16) void {
@@ -1472,7 +1396,8 @@ pub const Gpu = struct {
             }
         }
     }
-    fn drawTexturedTriangle(
+
+    fn drawTexturedTriangleWithTpage(
         self: *Gpu,
         x0: i32,
         y0: i32,
@@ -1483,6 +1408,7 @@ pub const Gpu = struct {
         x2: i32,
         y2: i32,
         uv2_word: u32,
+        tpage: u32,
     ) void {
         var min_x = x0;
         var max_x = x0;
@@ -1528,8 +1454,6 @@ pub const Gpu = struct {
         const clx = clutX(uv0_word);
         const cly = clutY(uv0_word);
 
-        // For textured polygon commands, the texture page is carried in UV1's upper bits.
-        const tpage = (uv1_word >> 16) & 0xFFFF;
         const tex_base_x = texturePageBaseX(tpage);
         const tex_base_y = texturePageBaseY(tpage);
         const tex_mode = textureMode(tpage);
@@ -1569,6 +1493,36 @@ pub const Gpu = struct {
         }
     }
 
+    fn drawTexturedTriangle(
+        self: *Gpu,
+        x0: i32,
+        y0: i32,
+        uv0_word: u32,
+        x1: i32,
+        y1: i32,
+        uv1_word: u32,
+        x2: i32,
+        y2: i32,
+        uv2_word: u32,
+    ) void {
+        const tpage = (uv1_word >> 16) & 0xFFFF;
+        self.drawTexturedTriangleWithTpage(x0, y0, uv0_word, x1, y1, uv1_word, x2, y2, uv2_word, tpage);
+    }
+
+    fn drawTexturedTriangleUsingDrawMode(
+        self: *Gpu,
+        x0: i32,
+        y0: i32,
+        uv0_word: u32,
+        x1: i32,
+        y1: i32,
+        uv1_word: u32,
+        x2: i32,
+        y2: i32,
+        uv2_word: u32,
+    ) void {
+        self.drawTexturedTriangleWithTpage(x0, y0, uv0_word, x1, y1, uv1_word, x2, y2, uv2_word, self.draw_mode);
+    }
     fn drawFilledQuadBBox(self: *Gpu) void {
         const x0 = vertexX(self.gp0_quad_vertices[0]) + self.draw_offset_x;
         const y0 = vertexY(self.gp0_quad_vertices[0]) + self.draw_offset_y;
