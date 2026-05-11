@@ -966,7 +966,7 @@ pub const Gpu = struct {
                 self.gp0_sprite_active = true;
                 self.gp0_sprite_index = 0;
             },
-            0x64, 0x65 => {
+            0x64, 0x65, 0x66, 0x67 => {
                 self.gp0_textured_rect_active = true;
                 self.gp0_textured_rect_index = 0;
             },
@@ -987,7 +987,7 @@ pub const Gpu = struct {
                 self.gp0_fixed_rect_h = 8;
                 self.gp0_fixed_rect_active = true;
             },
-            0x74, 0x75 => {
+            0x74, 0x75, 0x76, 0x77 => {
                 self.gp0_fixed_textured_rect_w = 8;
                 self.gp0_fixed_textured_rect_h = 8;
                 self.gp0_fixed_textured_rect_active = true;
@@ -1006,9 +1006,15 @@ pub const Gpu = struct {
                 self.gp0_fixed_rect_active = true;
             },
 
-            0x7C, 0x7D => {
+            0x7C, 0x7D, 0x7E, 0x7F => {
                 self.gp0_fixed_textured_rect_w = 16;
                 self.gp0_fixed_textured_rect_h = 16;
+                self.gp0_fixed_textured_rect_active = true;
+                self.gp0_fixed_textured_rect_index = 0;
+            },
+            0x6C, 0x6D, 0x6E, 0x6F => {
+                self.gp0_fixed_textured_rect_w = 1;
+                self.gp0_fixed_textured_rect_h = 1;
                 self.gp0_fixed_textured_rect_active = true;
                 self.gp0_fixed_textured_rect_index = 0;
             },
