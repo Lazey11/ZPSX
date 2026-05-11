@@ -24,7 +24,8 @@ set tests \
     /home/user/psxtests/PSX/GPU/16BPP/RenderTextureWindowRectangle/CLUT4BPP/RenderTextureWindowRectangleCLUT4BPP.exe \
     /home/user/psxtests/PSX/GPU/16BPP/RenderTextureWindowRectangle/CLUT8BPP/RenderTextureWindowRectangleCLUT8BPP.exe \
     /home/user/psxtests/PSX/GPU/16BPP/RenderTextureWindowRectangle/15BPP/RenderTextureWindowRectangle15BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTextureWindowRectangle/MASK15BPP/RenderTextureWindowRectangleMASK15BPP.exe
+    /home/user/psxtests/PSX/GPU/16BPP/RenderTextureWindowRectangle/MASK15BPP/RenderTextureWindowRectangleMASK15BPP.exe \
+    /home/user/psxtests/PSX/GPU/16BPP/MemoryTransfer/MemoryTransfer16BPP.exe
 
 if not test -f $bios
     echo "missing BIOS: $bios"
