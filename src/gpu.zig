@@ -319,8 +319,8 @@ pub const Gpu = struct {
         const x3 = xyX(xy3_word) + self.draw_offset_x;
         const y3 = xyY(xy3_word) + self.draw_offset_y;
 
-        self.drawTexturedTriangleUsingDrawMode(x0, y0, uv0_word, x1, y1, uv1_word, x3, y3, uv3_word);
-        self.drawTexturedTriangleUsingDrawMode(x0, y0, uv0_word, x2, y2, uv2_word, x3, y3, uv3_word);
+        self.drawTexturedTriangleUsingDrawMode(x0, y0, uv0_word, x1, y1, uv1_word, x2, y2, uv2_word);
+        self.drawTexturedTriangleUsingDrawMode(x1, y1, uv1_word, x2, y2, uv2_word, x3, y3, uv3_word);
     }
 
     fn drawFilledRect(self: *Gpu, x: i32, y: i32, w: u32, h: u32, color: u16) void {
