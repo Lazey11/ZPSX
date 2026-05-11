@@ -1252,6 +1252,20 @@ pub const Gpu = struct {
         return @as(i64, bx - ax) * @as(i64, py - ay) -
             @as(i64, by - ay) * @as(i64, px - ax);
     }
+    fn edgeFunction2(ax: i32, ay: i32, bx: i32, by: i32, px2: i32, py2: i32) i64 {
+        // Evaluates edge at half-pixel coordinates:
+        // px2/2, py2/2 where callers pass x*2+1, y*2+1.
+        return @as(i64, bx - ax) * @as(i64, py2 - ay * 2) -
+            @as(i64, by - ay) * @as(i64, px2 - ax * 2);
+    }
+    fn isTopLeftEdge(ax: i32, ay: i32, bx: i32, by: i32) bool {
+        const dy = by - ay;
+        const dx = bx - ax;
+        return dy < 0 or (dy == 0 and dx == 0);
+    }
+    fn edgeInside(value: i64, top_left: bool) bool {
+        return value > 0 or (value == 0 and top_left);
+    }
 
     fn drawFilledTriangle(self: *Gpu, x0: i32, y0: i32, x1: i32, y1: i32, x2: i32, y2: i32, color: u16) void {
         var min_x = x0;
@@ -1286,21 +1300,30 @@ pub const Gpu = struct {
         const area = edgeFunction(x0, y0, x1, y1, x2, y2);
         if (area == 0) return;
 
+        const flip = area < 0;
+
+        const e0_tl = isTopLeftEdge(x1, y1, x2, y2);
+        const e1_tl = isTopLeftEdge(x2, y2, x0, y0);
+        const e2_tl = isTopLeftEdge(x0, y0, x1, y1);
+
         var y: i32 = min_y;
         while (y <= max_y) : (y += 1) {
             var x: i32 = min_x;
             while (x <= max_x) : (x += 1) {
-                const w0 = edgeFunction(x1, y1, x2, y2, x, y);
-                const w1 = edgeFunction(x2, y2, x0, y0, x, y);
-                const w2 = edgeFunction(x0, y0, x1, y1, x, y);
+                const px2 = x * 2 + 1;
+                const py2 = y * 2 + 1;
 
-                const inside =
-                    if (area > 0)
-                        (w0 >= 0 and w1 >= 0 and w2 >= 0)
-                    else
-                        (w0 <= 0 and w1 <= 0 and w2 <= 0);
+                var w0 = edgeFunction2(x1, y1, x2, y2, px2, py2);
+                var w1 = edgeFunction2(x2, y2, x0, y0, px2, py2);
+                var w2 = edgeFunction2(x0, y0, x1, y1, px2, py2);
 
-                if (inside) {
+                if (flip) {
+                    w0 = -w0;
+                    w1 = -w1;
+                    w2 = -w2;
+                }
+
+                if (edgeInside(w0, e0_tl) and edgeInside(w1, e1_tl) and edgeInside(w2, e2_tl)) {
                     self.putPixel(x, y, color);
                 }
             }
@@ -1370,28 +1393,37 @@ pub const Gpu = struct {
         const area = edgeFunction(x0, y0, x1, y1, x2, y2);
         if (area == 0) return;
 
+        const flip = area < 0;
         const area_abs: u64 = @intCast(if (area > 0) area else -area);
+        const area2_abs = area_abs * 2;
+
+        const e0_tl = isTopLeftEdge(x1, y1, x2, y2);
+        const e1_tl = isTopLeftEdge(x2, y2, x0, y0);
+        const e2_tl = isTopLeftEdge(x0, y0, x1, y1);
 
         var y: i32 = min_y;
         while (y <= max_y) : (y += 1) {
             var x: i32 = min_x;
             while (x <= max_x) : (x += 1) {
-                const ew0 = edgeFunction(x1, y1, x2, y2, x, y);
-                const ew1 = edgeFunction(x2, y2, x0, y0, x, y);
-                const ew2 = edgeFunction(x0, y0, x1, y1, x, y);
+                const px2 = x * 2 + 1;
+                const py2 = y * 2 + 1;
 
-                const inside =
-                    if (area > 0)
-                        (ew0 >= 0 and ew1 >= 0 and ew2 >= 0)
-                    else
-                        (ew0 <= 0 and ew1 <= 0 and ew2 <= 0);
+                var ew0 = edgeFunction2(x1, y1, x2, y2, px2, py2);
+                var ew1 = edgeFunction2(x2, y2, x0, y0, px2, py2);
+                var ew2 = edgeFunction2(x0, y0, x1, y1, px2, py2);
 
-                if (inside) {
-                    const w0: u64 = @intCast(if (area > 0) ew0 else -ew0);
-                    const w1: u64 = @intCast(if (area > 0) ew1 else -ew1);
-                    const w2: u64 = @intCast(if (area > 0) ew2 else -ew2);
+                if (flip) {
+                    ew0 = -ew0;
+                    ew1 = -ew1;
+                    ew2 = -ew2;
+                }
 
-                    self.putPixel(x, y, mixRgb555(c0, c1, c2, w0, w1, w2, area_abs));
+                if (edgeInside(ew0, e0_tl) and edgeInside(ew1, e1_tl) and edgeInside(ew2, e2_tl)) {
+                    const w0: u64 = @intCast(ew0);
+                    const w1: u64 = @intCast(ew1);
+                    const w2: u64 = @intCast(ew2);
+
+                    self.putPixel(x, y, mixRgb555(c0, c1, c2, w0, w1, w2, area2_abs));
                 }
             }
         }
@@ -1442,7 +1474,9 @@ pub const Gpu = struct {
         const area = edgeFunction(x0, y0, x1, y1, x2, y2);
         if (area == 0) return;
 
+        const flip = area < 0;
         const area_abs: u64 = @intCast(if (area > 0) area else -area);
+        const area2_abs = area_abs * 2;
 
         const tex_u0 = uvU(uv0_word);
         const tex_v0 = uvV(uv0_word);
@@ -1458,30 +1492,37 @@ pub const Gpu = struct {
         const tex_base_y = texturePageBaseY(tpage);
         const tex_mode = textureMode(tpage);
 
+        const e0_tl = isTopLeftEdge(x1, y1, x2, y2);
+        const e1_tl = isTopLeftEdge(x2, y2, x0, y0);
+        const e2_tl = isTopLeftEdge(x0, y0, x1, y1);
+
         var y: i32 = min_y;
         while (y <= max_y) : (y += 1) {
             var x: i32 = min_x;
             while (x <= max_x) : (x += 1) {
-                const ew0 = edgeFunction(x1, y1, x2, y2, x, y);
-                const ew1 = edgeFunction(x2, y2, x0, y0, x, y);
-                const ew2 = edgeFunction(x0, y0, x1, y1, x, y);
+                const px2 = x * 2 + 1;
+                const py2 = y * 2 + 1;
 
-                const inside =
-                    if (area > 0)
-                        (ew0 >= 0 and ew1 >= 0 and ew2 >= 0)
-                    else
-                        (ew0 <= 0 and ew1 <= 0 and ew2 <= 0);
+                var ew0 = edgeFunction2(x1, y1, x2, y2, px2, py2);
+                var ew1 = edgeFunction2(x2, y2, x0, y0, px2, py2);
+                var ew2 = edgeFunction2(x0, y0, x1, y1, px2, py2);
 
-                if (inside) {
-                    const w0: u64 = @intCast(if (area > 0) ew0 else -ew0);
-                    const w1: u64 = @intCast(if (area > 0) ew1 else -ew1);
-                    const w2: u64 = @intCast(if (area > 0) ew2 else -ew2);
+                if (flip) {
+                    ew0 = -ew0;
+                    ew1 = -ew1;
+                    ew2 = -ew2;
+                }
+
+                if (edgeInside(ew0, e0_tl) and edgeInside(ew1, e1_tl) and edgeInside(ew2, e2_tl)) {
+                    const w0: u64 = @intCast(ew0);
+                    const w1: u64 = @intCast(ew1);
+                    const w2: u64 = @intCast(ew2);
 
                     const tu: u32 = @intCast(
-                        (@as(u64, tex_u0) * w0 + @as(u64, tex_u1) * w1 + @as(u64, tex_u2) * w2) / area_abs,
+                        (@as(u64, tex_u0) * w0 + @as(u64, tex_u1) * w1 + @as(u64, tex_u2) * w2) / area2_abs,
                     );
                     const tv: u32 = @intCast(
-                        (@as(u64, tex_v0) * w0 + @as(u64, tex_v1) * w1 + @as(u64, tex_v2) * w2) / area_abs,
+                        (@as(u64, tex_v0) * w0 + @as(u64, tex_v1) * w1 + @as(u64, tex_v2) * w2) / area2_abs,
                     );
 
                     const px = self.sampleTextureMode(tex_mode, tex_base_x, tex_base_y, clx, cly, tu, tv);
