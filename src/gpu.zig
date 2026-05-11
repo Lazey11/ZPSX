@@ -917,7 +917,7 @@ pub const Gpu = struct {
                 self.gp0_shaded_textured_tri_index = 0;
                 return;
             },
-            0x2C => {
+            0x2C, 0x2D => {
                 self.gp0_textured_quad_color = value;
                 self.gp0_textured_quad_active = true;
                 self.gp0_textured_quad_index = 0;
