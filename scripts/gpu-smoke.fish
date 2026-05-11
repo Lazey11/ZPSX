@@ -1,55 +1,19 @@
 #!/usr/bin/env fish
 
 set bios /home/user/psxtests/PS1_BIOS/SCPH1001.bin
-set tests \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderLine/RenderLine16BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderRectangle/RenderRectangle16BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderPolygon/RenderPolygon16BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderPolygonDither/RenderPolygonDither16BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/CLUT4BPP/RenderTexturePolygonCLUT4BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/CLUT8BPP/RenderTexturePolygonCLUT8BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/15BPP/RenderTexturePolygon15BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTextureRectangle/CLUT4BPP/RenderTextureRectangleCLUT4BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTextureRectangle/CLUT8BPP/RenderTextureRectangleCLUT8BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTextureRectangle/15BPP/RenderTextureRectangle15BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTextureRectangle/MASK15BPP/RenderTextureRectangleMASK15BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderRectangleClip/RenderRectangleClip16BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderPolygonClip/RenderPolygonClip16BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygonClip/CLUT4BPP/RenderTexturePolygonClipCLUT4BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygonClip/CLUT8BPP/RenderTexturePolygonClipCLUT8BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygonClip/15BPP/RenderTexturePolygonClip15BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygonClip/MASK15BPP/RenderTexturePolygonClipMASK15BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/MASK15BPP/RenderTexturePolygonMASK15BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygonDither/RenderTexturePolygon15BPPDither.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTextureWindowRectangle/CLUT4BPP/RenderTextureWindowRectangleCLUT4BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTextureWindowRectangle/CLUT8BPP/RenderTextureWindowRectangleCLUT8BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTextureWindowRectangle/15BPP/RenderTextureWindowRectangle15BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/RenderTextureWindowRectangle/MASK15BPP/RenderTextureWindowRectangleMASK15BPP.exe \
-    /home/user/psxtests/PSX/GPU/16BPP/MemoryTransfer/MemoryTransfer16BPP.exe \
-    /home/user/psxtests/PSX/GPU/24BPP/MemoryTransfer/MemoryTransfer24BPP.exe
+set gpu_tests_root /home/user/psxtests/PSX/GPU
 
-if not test -f $bios
-    echo "missing BIOS: $bios"
-    exit 1
-end
+zig build -Doptimize=ReleaseFast; or exit 1
 
-zig build -Doptimize=ReleaseFast
-or exit 1
-
-for test in $tests
-    if not test -f $test
-        echo "missing test: $test"
-        exit 1
-    end
-
+for test in (find $gpu_tests_root -iname "*.exe" | sort)
     echo "GPU smoke: $test"
 
-    ./zig-out/bin/ZPSX $bios $test --headless --frames 120 2> debug.txt
+    ./zig-out/bin/ZPSX $bios $test --headless --frames 120 2> /tmp/zpsx-gpu-smoke-debug.txt
     or exit 1
 
-    if grep -q "UNSUPPORTED GP0" debug.txt
-        echo "unsupported GP0 found in $test"
-        grep "UNSUPPORTED GP0" debug.txt | sort | uniq -c | sort -nr | head -n 20
+    if grep -q "UNSUPPORTED GP0" /tmp/zpsx-gpu-smoke-debug.txt
+        echo "Unsupported GP0 found in $test"
+        grep "UNSUPPORTED GP0" /tmp/zpsx-gpu-smoke-debug.txt | sort | uniq -c | sort -nr | head -n 20
         exit 1
     end
 end
