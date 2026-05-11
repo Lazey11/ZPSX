@@ -20,6 +20,7 @@ pub const Gpu = struct {
     texture_window: u32 = 0,
     mask_set_on_draw: bool = false,
     mask_check_before_draw: bool = false,
+    gp0_draw_semi_transparent: bool = false,
 
     gp0_quad_active: bool = false,
     gp0_quad_color: u16 = 0,
@@ -881,116 +882,138 @@ pub const Gpu = struct {
             0x01 => {}, // clear cache
             0x03 => {}, // unknown/no-op
             0x02 => {
+                self.gp0_draw_semi_transparent = false;
                 self.gp0_vram_fill_color = rgb24ToRgb555(value);
                 self.gp0_vram_fill_active = true;
                 self.gp0_vram_fill_index = 0;
             },
             0x20, 0x22 => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_tri_color = rgb24ToRgb555(value);
                 self.gp0_tri_active = true;
                 self.gp0_tri_vertex_index = 0;
             },
             0x28, 0x2A => {
                 //std.debug.print("GP0 QUAD 0x28 color=0x{X:0>6}\n", .{value & 0x00FF_FFFF});
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_quad_color = rgb24ToRgb555(value);
                 self.gp0_quad_active = true;
                 self.gp0_quad_vertex_index = 0;
             },
             0x30, 0x32 => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_shaded_tri_color = rgb24ToRgb555(value);
                 self.gp0_shaded_tri_active = true;
                 self.gp0_shaded_tri_index = 0;
             },
             0x38, 0x3A => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_shaded_quad_color = rgb24ToRgb555(value);
                 self.gp0_shaded_quad_active = true;
                 self.gp0_shaded_quad_index = 0;
             },
             0x40, 0x42 => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_line_color = rgb24ToRgb555(value);
                 self.gp0_line_active = true;
                 self.gp0_line_index = 0;
             },
             0x48, 0x4A => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_polyline_color = rgb24ToRgb555(value);
                 self.gp0_polyline_active = true;
                 self.gp0_polyline_have_last = false;
             },
             0x50, 0x52 => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_shaded_line_color0 = rgb24ToRgb555(value);
                 self.gp0_shaded_line_active = true;
                 self.gp0_shaded_line_index = 0;
             },
             0x58, 0x5A => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_shaded_polyline_pending_color = rgb24ToRgb555(value);
                 self.gp0_shaded_polyline_active = true;
                 self.gp0_shaded_polyline_have_last = false;
                 self.gp0_shaded_polyline_need_xy = true;
             },
             0x34, 0x36 => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_shaded_textured_tri_active = true;
                 self.gp0_shaded_textured_tri_index = 0;
                 return;
             },
             0x3C, 0x3E => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_shaded_textured_quad_active = true;
                 self.gp0_shaded_textured_quad_index = 0;
                 return;
             },
             0x2C, 0x2D, 0x2E, 0x2F => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_textured_quad_color = value;
                 self.gp0_textured_quad_active = true;
                 self.gp0_textured_quad_index = 0;
                 return;
             },
             0x24, 0x25, 0x26, 0x27 => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_textured_tri_active = true;
                 self.gp0_textured_tri_index = 0;
                 return;
             },
             0x60, 0x62, 0x6A => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_sprite_color = rgb24ToRgb555(value);
                 self.gp0_sprite_active = true;
                 self.gp0_sprite_index = 0;
             },
             0x64, 0x65, 0x66, 0x67 => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_textured_rect_active = true;
                 self.gp0_textured_rect_index = 0;
             },
 
             0x68 => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_dot_color = rgb24ToRgb555(value);
                 self.gp0_dot_active = true;
             },
             0x70 => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_fixed_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_rect_w = 8;
                 self.gp0_fixed_rect_h = 8;
                 self.gp0_fixed_rect_active = true;
             },
             0x72 => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_fixed_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_rect_w = 8;
                 self.gp0_fixed_rect_h = 8;
                 self.gp0_fixed_rect_active = true;
             },
             0x74, 0x75, 0x76, 0x77 => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_fixed_textured_rect_w = 8;
                 self.gp0_fixed_textured_rect_h = 8;
                 self.gp0_fixed_textured_rect_active = true;
                 self.gp0_fixed_textured_rect_index = 0;
             },
             0x78 => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_fixed_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_rect_w = 16;
                 self.gp0_fixed_rect_h = 16;
                 self.gp0_fixed_rect_active = true;
             },
             0x80 => {
+                self.gp0_draw_semi_transparent = false;
                 self.gp0_vram_copy_active = true;
                 self.gp0_vram_copy_index = 0;
             },
             0x7A => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_fixed_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_rect_w = 16;
                 self.gp0_fixed_rect_h = 16;
@@ -998,12 +1021,14 @@ pub const Gpu = struct {
             },
 
             0x7C, 0x7D, 0x7E, 0x7F => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_fixed_textured_rect_w = 16;
                 self.gp0_fixed_textured_rect_h = 16;
                 self.gp0_fixed_textured_rect_active = true;
                 self.gp0_fixed_textured_rect_index = 0;
             },
             0x6C, 0x6D, 0x6E, 0x6F => {
+                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_fixed_textured_rect_w = 1;
                 self.gp0_fixed_textured_rect_h = 1;
                 self.gp0_fixed_textured_rect_active = true;
@@ -1011,6 +1036,7 @@ pub const Gpu = struct {
             },
 
             0xE1 => {
+                self.gp0_draw_semi_transparent = false;
                 self.draw_mode = value & 0x00FF_FFFF;
             }, // draw mode
             0xE2 => {
@@ -1039,15 +1065,18 @@ pub const Gpu = struct {
                 self.draw_offset_y = oy;
             }, // drawing offset
             0xE6 => {
+                self.gp0_draw_semi_transparent = false;
                 self.mask_set_on_draw = (value & 1) != 0;
                 self.mask_check_before_draw = (value & 2) != 0;
             }, // mask bit setting
 
             0xA0 => {
+                self.gp0_draw_semi_transparent = false;
                 self.gp0_mode = 1;
             },
 
             0xC0 => {
+                self.gp0_draw_semi_transparent = false;
                 self.gp0_mode = 4;
             },
 
@@ -1139,15 +1168,25 @@ pub const Gpu = struct {
         const uy: u32 = @intCast(y);
 
         const index: usize = @intCast(uy * 1024 + ux);
+
         if (self.mask_check_before_draw and (self.vram[index] & 0x8000) != 0) {
             return;
         }
-        var out_color = color;
+
+        var out_color = color & 0x7FFF;
+
+        if (self.gp0_draw_semi_transparent) {
+            const dst = self.vram[index] & 0x7FFF;
+            out_color = blendSemiTransparent(out_color, dst, semiTransparencyMode(self.draw_mode));
+        }
+
         if (self.mask_set_on_draw) {
             out_color |= 0x8000;
         }
+
         self.vram[index] = out_color;
     }
+
     fn drawLine(self: *Gpu, x0_in: i32, y0_in: i32, x1_in: i32, y1_in: i32, color: u16) void {
         var x0 = x0_in;
         var y0 = y0_in;
@@ -1261,7 +1300,7 @@ pub const Gpu = struct {
     fn isTopLeftEdge(ax: i32, ay: i32, bx: i32, by: i32) bool {
         const dy = by - ay;
         const dx = bx - ax;
-        return dy < 0 or (dy == 0 and dx == 0);
+        return dy < 0 or (dy == 0 and dx > 0);
     }
     fn edgeInside(value: i64, top_left: bool) bool {
         return value > 0 or (value == 0 and top_left);
@@ -1339,6 +1378,53 @@ pub const Gpu = struct {
 
     fn rgb555B(color: u16) u32 {
         return (color >> 10) & 0x1F;
+    }
+    fn clamp5Signed(value: i32) u32 {
+        if (value < 0) return 0;
+        if (value > 31) return 31;
+        return @intCast(value);
+    }
+    fn semiTransparencyMode(draw_mode: u32) u32 {
+        return (draw_mode >> 5) & 0x3;
+    }
+    fn blendSemiTransparent(src: u16, dst: u16, mode: u32) u16 {
+        const sr: i32 = @intCast(rgb555R(src));
+        const sg: i32 = @intCast(rgb555G(src));
+        const sb: i32 = @intCast(rgb555B(src));
+
+        const dr: i32 = @intCast(rgb555R(dst));
+        const dg: i32 = @intCast(rgb555G(dst));
+        const db: i32 = @intCast(rgb555B(dst));
+
+        const r: u32 = switch (mode) {
+            0 => clamp5Signed(@divTrunc(dr + sr, 2)), // B/2 + F/2
+            1 => clamp5Signed(dr + sr), // B + F
+            2 => clamp5Signed(dr - sr), // B - F
+            3 => clamp5Signed(dr + @divTrunc(sr, 4)), // B + F/4
+            else => clamp5Signed(sr),
+        };
+
+        const g: u32 = switch (mode) {
+            0 => clamp5Signed(@divTrunc(dg + sg, 2)),
+            1 => clamp5Signed(dg + sg),
+            2 => clamp5Signed(dg - sg),
+            3 => clamp5Signed(dg + @divTrunc(sg, 4)),
+            else => clamp5Signed(sg),
+        };
+
+        const b: u32 = switch (mode) {
+            0 => clamp5Signed(@divTrunc(db + sb, 2)),
+            1 => clamp5Signed(db + sb),
+            2 => clamp5Signed(db - sb),
+            3 => clamp5Signed(db + @divTrunc(sb, 4)),
+            else => clamp5Signed(sb),
+        };
+
+        return @intCast(r | (g << 5) | (b << 10));
+    }
+
+    fn gp0CommandSemiTransparent(cmd: u8) bool {
+        return (cmd & 0x02) != 0;
     }
 
     fn mixRgb555(c0: u16, c1: u16, c2: u16, w0: u64, w1: u64, w2: u64, area: u64) u16 {
