@@ -94,6 +94,10 @@ pub const Gpu = struct {
     gp0_textured_tri_words: [6]u32 = [_]u32{0} ** 6,
     gp0_textured_tri_index: u8 = 0,
 
+    gp0_shaded_textured_tri_active: bool = false,
+    gp0_shaded_textured_tri_words: [8]u32 = [_]u32{0} ** 8,
+    gp0_shaded_textured_tri_index: u8 = 0,
+
     gp0_dot_color: u16 = 0,
     gp0_dot_active: bool = false,
 
@@ -508,6 +512,33 @@ pub const Gpu = struct {
             }
             return;
         }
+        if (self.gp0_shaded_textured_tri_active) {
+            self.gp0_shaded_textured_tri_words[self.gp0_shaded_textured_tri_index] = value;
+            self.gp0_shaded_textured_tri_index += 1;
+
+            if (self.gp0_shaded_textured_tri_index == 8) {
+                const xy0 = self.gp0_shaded_textured_tri_words[0];
+                const uv0 = self.gp0_shaded_textured_tri_words[1];
+                const xy1 = self.gp0_shaded_textured_tri_words[3];
+                const uv1 = self.gp0_shaded_textured_tri_words[4];
+                const xy2 = self.gp0_shaded_textured_tri_words[6];
+                const uv2 = self.gp0_shaded_textured_tri_words[7];
+
+                const x0 = xyX(xy0) + self.draw_offset_x;
+                const y0 = xyY(xy0) + self.draw_offset_y;
+                const x1 = xyX(xy1) + self.draw_offset_x;
+                const y1 = xyY(xy1) + self.draw_offset_y;
+                const x2 = xyX(xy2) + self.draw_offset_x;
+                const y2 = xyY(xy2) + self.draw_offset_y;
+
+                self.drawTexturedTriangle(x0, y0, uv0, x1, y1, uv1, x2, y2, uv2);
+
+                self.gp0_shaded_textured_tri_active = false;
+                self.gp0_shaded_textured_tri_index = 0;
+            }
+
+            return;
+        }
         if (self.gp0_textured_tri_active) {
             self.gp0_textured_tri_words[self.gp0_textured_tri_index] = value;
             self.gp0_textured_tri_index += 1;
@@ -880,6 +911,11 @@ pub const Gpu = struct {
                 self.gp0_shaded_polyline_active = true;
                 self.gp0_shaded_polyline_have_last = false;
                 self.gp0_shaded_polyline_need_xy = true;
+            },
+            0x34 => {
+                self.gp0_shaded_textured_tri_active = true;
+                self.gp0_shaded_textured_tri_index = 0;
+                return;
             },
             0x2C => {
                 self.gp0_textured_quad_color = value;
