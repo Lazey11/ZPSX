@@ -1370,6 +1370,44 @@ pub const Gpu = struct {
         e2_tl: bool,
     };
 
+    const TriangleWeights = struct {
+        w0: u64,
+        w1: u64,
+        w2: u64,
+    };
+
+    fn triangleWeights(
+        x0: i32,
+        y0: i32,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        px2: i32,
+        py2: i32,
+        edges: TriangleEdges,
+    ) ?TriangleWeights {
+        var ew0 = edgeFunction2(x1, y1, x2, y2, px2, py2);
+        var ew1 = edgeFunction2(x2, y2, x0, y0, px2, py2);
+        var ew2 = edgeFunction2(x0, y0, x1, y1, px2, py2);
+
+        if (edges.flip) {
+            ew0 = -ew0;
+            ew1 = -ew1;
+            ew2 = -ew2;
+        }
+
+        if (!edgeInside(ew0, edges.e0_tl)) return null;
+        if (!edgeInside(ew1, edges.e1_tl)) return null;
+        if (!edgeInside(ew2, edges.e2_tl)) return null;
+
+        return .{
+            .w0 = @intCast(ew0),
+            .w1 = @intCast(ew1),
+            .w2 = @intCast(ew2),
+        };
+    }
+
     fn triangleEdges(x0: i32, y0: i32, x1: i32, y1: i32, x2: i32, y2: i32) ?TriangleEdges {
         const area = edgeFunction(x0, y0, x1, y1, x2, y2);
         if (area == 0) return null;
@@ -1442,19 +1480,8 @@ pub const Gpu = struct {
                 const px2 = x * 2 + 1;
                 const py2 = y * 2 + 1;
 
-                var w0 = edgeFunction2(x1, y1, x2, y2, px2, py2);
-                var w1 = edgeFunction2(x2, y2, x0, y0, px2, py2);
-                var w2 = edgeFunction2(x0, y0, x1, y1, px2, py2);
-
-                if (edges.flip) {
-                    w0 = -w0;
-                    w1 = -w1;
-                    w2 = -w2;
-                }
-
-                if (edgeInside(w0, edges.e0_tl) and edgeInside(w1, edges.e1_tl) and edgeInside(w2, edges.e2_tl)) {
-                    self.putPixel(x, y, color);
-                }
+                if (triangleWeights(x0, y0, x1, y1, x2, y2, px2, py2, edges) == null) continue;
+                self.putPixel(x, y, color);
             }
         }
     }
@@ -1555,6 +1582,7 @@ pub const Gpu = struct {
     ) void {
         const bounds = self.clippedTriangleBounds(x0, y0, x1, y1, x2, y2) orelse return;
         const edges = triangleEdges(x0, y0, x1, y1, x2, y2) orelse return;
+
         var y: i32 = bounds.min_y;
         while (y <= bounds.max_y) : (y += 1) {
             var x: i32 = bounds.min_x;
@@ -1562,23 +1590,13 @@ pub const Gpu = struct {
                 const px2 = x * 2 + 1;
                 const py2 = y * 2 + 1;
 
-                var ew0 = edgeFunction2(x1, y1, x2, y2, px2, py2);
-                var ew1 = edgeFunction2(x2, y2, x0, y0, px2, py2);
-                var ew2 = edgeFunction2(x0, y0, x1, y1, px2, py2);
+                const weights = triangleWeights(x0, y0, x1, y1, x2, y2, px2, py2, edges) orelse continue;
 
-                if (edges.flip) {
-                    ew0 = -ew0;
-                    ew1 = -ew1;
-                    ew2 = -ew2;
-                }
-
-                if (edgeInside(ew0, edges.e0_tl) and edgeInside(ew1, edges.e1_tl) and edgeInside(ew2, edges.e2_tl)) {
-                    const w0: u64 = @intCast(ew0);
-                    const w1: u64 = @intCast(ew1);
-                    const w2: u64 = @intCast(ew2);
-
-                    self.putPixel(x, y, mixRgb555(c0, c1, c2, w0, w1, w2, edges.area2_abs));
-                }
+                self.putPixel(
+                    x,
+                    y,
+                    mixRgb555(c0, c1, c2, weights.w0, weights.w1, weights.w2, edges.area2_abs),
+                );
             }
         }
     }
@@ -1620,33 +1638,19 @@ pub const Gpu = struct {
                 const px2 = x * 2 + 1;
                 const py2 = y * 2 + 1;
 
-                var ew0 = edgeFunction2(x1, y1, x2, y2, px2, py2);
-                var ew1 = edgeFunction2(x2, y2, x0, y0, px2, py2);
-                var ew2 = edgeFunction2(x0, y0, x1, y1, px2, py2);
+                const weights = triangleWeights(x0, y0, x1, y1, x2, y2, px2, py2, edges) orelse continue;
 
-                if (edges.flip) {
-                    ew0 = -ew0;
-                    ew1 = -ew1;
-                    ew2 = -ew2;
-                }
+                const tu: u32 = @intCast(
+                    (@as(u64, tex_u0) * weights.w0 + @as(u64, tex_u1) * weights.w1 + @as(u64, tex_u2) * weights.w2) / edges.area2_abs,
+                );
+                const tv: u32 = @intCast(
+                    (@as(u64, tex_v0) * weights.w0 + @as(u64, tex_v1) * weights.w1 + @as(u64, tex_v2) * weights.w2) / edges.area2_abs,
+                );
 
-                if (edgeInside(ew0, edges.e0_tl) and edgeInside(ew1, edges.e1_tl) and edgeInside(ew2, edges.e2_tl)) {
-                    const w0: u64 = @intCast(ew0);
-                    const w1: u64 = @intCast(ew1);
-                    const w2: u64 = @intCast(ew2);
+                const px = self.sampleTextureMode(tex_mode, tex_base_x, tex_base_y, clx, cly, tu, tv);
+                if (px == 0) continue;
 
-                    const tu: u32 = @intCast(
-                        (@as(u64, tex_u0) * w0 + @as(u64, tex_u1) * w1 + @as(u64, tex_u2) * w2) / edges.area2_abs,
-                    );
-                    const tv: u32 = @intCast(
-                        (@as(u64, tex_v0) * w0 + @as(u64, tex_v1) * w1 + @as(u64, tex_v2) * w2) / edges.area2_abs,
-                    );
-
-                    const px = self.sampleTextureMode(tex_mode, tex_base_x, tex_base_y, clx, cly, tu, tv);
-                    if (px == 0) continue;
-
-                    self.putPixel(x, y, px);
-                }
+                self.putPixel(x, y, px);
             }
         }
     }
@@ -1683,6 +1687,7 @@ pub const Gpu = struct {
         const tex_base_x = texturePageBaseX(tpage);
         const tex_base_y = texturePageBaseY(tpage);
         const tex_mode = textureMode(tpage);
+
         var y: i32 = bounds.min_y;
         while (y <= bounds.max_y) : (y += 1) {
             var x: i32 = bounds.min_x;
@@ -1690,34 +1695,20 @@ pub const Gpu = struct {
                 const px2 = x * 2 + 1;
                 const py2 = y * 2 + 1;
 
-                var ew0 = edgeFunction2(x1, y1, x2, y2, px2, py2);
-                var ew1 = edgeFunction2(x2, y2, x0, y0, px2, py2);
-                var ew2 = edgeFunction2(x0, y0, x1, y1, px2, py2);
+                const weights = triangleWeights(x0, y0, x1, y1, x2, y2, px2, py2, edges) orelse continue;
 
-                if (edges.flip) {
-                    ew0 = -ew0;
-                    ew1 = -ew1;
-                    ew2 = -ew2;
-                }
+                const tu: u32 = @intCast(
+                    (@as(u64, tex_u0) * weights.w0 + @as(u64, tex_u1) * weights.w1 + @as(u64, tex_u2) * weights.w2) / edges.area2_abs,
+                );
+                const tv: u32 = @intCast(
+                    (@as(u64, tex_v0) * weights.w0 + @as(u64, tex_v1) * weights.w1 + @as(u64, tex_v2) * weights.w2) / edges.area2_abs,
+                );
 
-                if (edgeInside(ew0, edges.e0_tl) and edgeInside(ew1, edges.e1_tl) and edgeInside(ew2, edges.e2_tl)) {
-                    const w0: u64 = @intCast(ew0);
-                    const w1: u64 = @intCast(ew1);
-                    const w2: u64 = @intCast(ew2);
+                const tex_px = self.sampleTextureMode(tex_mode, tex_base_x, tex_base_y, clx, cly, tu, tv);
+                if (tex_px == 0) continue;
 
-                    const tu: u32 = @intCast(
-                        (@as(u64, tex_u0) * w0 + @as(u64, tex_u1) * w1 + @as(u64, tex_u2) * w2) / edges.area2_abs,
-                    );
-                    const tv: u32 = @intCast(
-                        (@as(u64, tex_v0) * w0 + @as(u64, tex_v1) * w1 + @as(u64, tex_v2) * w2) / edges.area2_abs,
-                    );
-
-                    const tex_px = self.sampleTextureMode(tex_mode, tex_base_x, tex_base_y, clx, cly, tu, tv);
-                    if (tex_px == 0) continue;
-
-                    const shade = mixRgb555(c0, c1, c2, w0, w1, w2, edges.area2_abs);
-                    self.putPixel(x, y, modulateRgb555(tex_px, shade));
-                }
+                const shade = mixRgb555(c0, c1, c2, weights.w0, weights.w1, weights.w2, edges.area2_abs);
+                self.putPixel(x, y, modulateRgb555(tex_px, shade));
             }
         }
     }
