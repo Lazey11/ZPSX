@@ -218,8 +218,9 @@ pub const Gpu = struct {
     }
     fn applyTextureWindowCoord(coord: u32, mask: u32, offset: u32) u32 {
         const mask_pixels = mask * 8;
-        const offset_pixels = (offset & mask) * 8;
-        return (coord & ~mask_pixels) | offset_pixels;
+        const offset_pixels = offset * 8;
+
+        return (coord & ~mask_pixels) | (offset_pixels & mask_pixels);
     }
     fn textureWindowU(self: *const Gpu, u: u32) u32 {
         return applyTextureWindowCoord(
