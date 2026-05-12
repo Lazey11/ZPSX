@@ -309,17 +309,13 @@ pub const Gpu = struct {
         const xy3_word = self.gp0_textured_quad_words[6];
         const uv3_word = self.gp0_textured_quad_words[7];
 
-        const x0 = xyX(xy0_word) + self.draw_offset_x;
-        const y0 = xyY(xy0_word) + self.draw_offset_y;
-        const x1 = xyX(xy1_word) + self.draw_offset_x;
-        const y1 = xyY(xy1_word) + self.draw_offset_y;
-        const x2 = xyX(xy2_word) + self.draw_offset_x;
-        const y2 = xyY(xy2_word) + self.draw_offset_y;
-        const x3 = xyX(xy3_word) + self.draw_offset_x;
-        const y3 = xyY(xy3_word) + self.draw_offset_y;
+        const p0 = self.offsetPoint(xy0_word);
+        const p1 = self.offsetPoint(xy1_word);
+        const p2 = self.offsetPoint(xy2_word);
+        const p3 = self.offsetPoint(xy3_word);
 
-        self.drawTexturedTriangle(x0, y0, uv0_word, x1, y1, uv1_word, x2, y2, uv2_word);
-        self.drawTexturedTriangle(x1, y1, uv1_word, x2, y2, uv2_word, x3, y3, uv3_word);
+        self.drawTexturedTriangle(p0.x, p0.y, uv0_word, p1.x, p1.y, uv1_word, p2.x, p2.y, uv2_word);
+        self.drawTexturedTriangle(p1.x, p1.y, uv1_word, p2.x, p2.y, uv2_word, p3.x, p3.y, uv3_word);
     }
 
     fn drawFilledRect(self: *Gpu, x: i32, y: i32, w: u32, h: u32, color: u16) void {
@@ -1485,6 +1481,15 @@ pub const Gpu = struct {
         };
     }
 
+    const Point = struct { x: i32, y: i32 };
+
+    fn offsetPoint(self: *const Gpu, word: u32) Point {
+        return .{
+            .x = xyX(word) + self.draw_offset_x,
+            .y = xyY(word) + self.draw_offset_y,
+        };
+    }
+
     fn clippedTriangleBounds(
         self: *const Gpu,
         x0: i32,
@@ -1774,17 +1779,13 @@ pub const Gpu = struct {
     }
 
     fn drawFilledQuadBBox(self: *Gpu) void {
-        const x0 = vertexX(self.gp0_quad_vertices[0]) + self.draw_offset_x;
-        const y0 = vertexY(self.gp0_quad_vertices[0]) + self.draw_offset_y;
-        const x1 = vertexX(self.gp0_quad_vertices[1]) + self.draw_offset_x;
-        const y1 = vertexY(self.gp0_quad_vertices[1]) + self.draw_offset_y;
-        const x2 = vertexX(self.gp0_quad_vertices[2]) + self.draw_offset_x;
-        const y2 = vertexY(self.gp0_quad_vertices[2]) + self.draw_offset_y;
-        const x3 = vertexX(self.gp0_quad_vertices[3]) + self.draw_offset_x;
-        const y3 = vertexY(self.gp0_quad_vertices[3]) + self.draw_offset_y;
+        const p0 = self.offsetPoint(self.gp0_quad_vertices[0]);
+        const p1 = self.offsetPoint(self.gp0_quad_vertices[1]);
+        const p2 = self.offsetPoint(self.gp0_quad_vertices[2]);
+        const p3 = self.offsetPoint(self.gp0_quad_vertices[3]);
 
-        self.drawFilledTriangle(x0, y0, x1, y1, x2, y2, self.gp0_quad_color);
-        self.drawFilledTriangle(x1, y1, x2, y2, x3, y3, self.gp0_quad_color);
+        self.drawFilledTriangle(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, self.gp0_quad_color);
+        self.drawFilledTriangle(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, self.gp0_quad_color);
     }
 
     pub fn writeGp1(self: *Gpu, pc: u32, value: u32) void {
