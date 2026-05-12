@@ -98,10 +98,12 @@ pub const Gpu = struct {
     gp0_textured_tri_words: [6]u32 = [_]u32{0} ** 6,
     gp0_textured_tri_index: u8 = 0,
 
+    gp0_shaded_textured_quad_color: u16 = 0,
     gp0_shaded_textured_quad_active: bool = false,
     gp0_shaded_textured_quad_words: [11]u32 = [_]u32{0} ** 11,
     gp0_shaded_textured_quad_index: u8 = 0,
 
+    gp0_shaded_textured_tri_color: u16 = 0,
     gp0_shaded_textured_tri_active: bool = false,
     gp0_shaded_textured_tri_words: [8]u32 = [_]u32{0} ** 8,
     gp0_shaded_textured_tri_index: u8 = 0,
@@ -125,6 +127,7 @@ pub const Gpu = struct {
     gp0_vram_fill_active: bool = false,
 
     gp0_textured_rect_color: u16 = 0x7FFF,
+    gp0_textured_rect_raw_texture: bool = false,
     gp0_textured_rect_words: [3]u32 = [_]u32{0} ** 3,
     gp0_textured_rect_index: u8 = 0,
     gp0_textured_rect_active: bool = false,
@@ -133,6 +136,7 @@ pub const Gpu = struct {
     gp0_fixed_textured_rect_index: u8 = 0,
     gp0_fixed_textured_rect_w: u32 = 0,
     gp0_fixed_textured_rect_h: u32 = 0,
+    gp0_fixed_textured_rect_raw_texture: bool = false,
     gp0_fixed_textured_rect_active: bool = false,
 
     gp0_vram_copy_words: [3]u32 = [_]u32{0} ** 3,
@@ -427,8 +431,7 @@ pub const Gpu = struct {
                 const w: u32 = @intCast(size & 0xFFFF);
                 const h: u32 = @intCast((size >> 16) & 0xFFFF);
 
-                self.drawTexturedRect(x, y, uv, w, h, gp0CommandRawTexture(@intCast(self.gp0_last >> 24)));
-
+                self.drawTexturedRect(x, y, uv, w, h, self.gp0_textured_rect_raw_texture);
                 self.gp0_textured_rect_active = false;
                 self.gp0_textured_rect_index = 0;
             }
@@ -453,7 +456,7 @@ pub const Gpu = struct {
                     uv,
                     self.gp0_fixed_textured_rect_w,
                     self.gp0_fixed_textured_rect_h,
-                    gp0CommandRawTexture(@intCast(self.gp0_last >> 24)),
+                    self.gp0_fixed_textured_rect_raw_texture,
                 );
 
                 self.gp0_fixed_textured_rect_active = false;
@@ -508,17 +511,63 @@ pub const Gpu = struct {
             self.gp0_shaded_textured_quad_index += 1;
 
             if (self.gp0_shaded_textured_quad_index == 11) {
-                self.gp0_textured_quad_words[0] = self.gp0_shaded_textured_quad_words[0];
-                self.gp0_textured_quad_words[1] = self.gp0_shaded_textured_quad_words[1];
-                self.gp0_textured_quad_words[2] = self.gp0_shaded_textured_quad_words[3];
-                self.gp0_textured_quad_words[3] = self.gp0_shaded_textured_quad_words[4];
-                self.gp0_textured_quad_words[4] = self.gp0_shaded_textured_quad_words[6];
-                self.gp0_textured_quad_words[5] = self.gp0_shaded_textured_quad_words[7];
-                self.gp0_textured_quad_words[6] = self.gp0_shaded_textured_quad_words[9];
-                self.gp0_textured_quad_words[7] = self.gp0_shaded_textured_quad_words[10];
+                const xy0 = self.gp0_shaded_textured_quad_words[0];
+                const uv0 = self.gp0_shaded_textured_quad_words[1];
+                const c1_word = self.gp0_shaded_textured_quad_words[2];
+                const xy1 = self.gp0_shaded_textured_quad_words[3];
+                const uv1 = self.gp0_shaded_textured_quad_words[4];
+                const c2_word = self.gp0_shaded_textured_quad_words[5];
+                const xy2 = self.gp0_shaded_textured_quad_words[6];
+                const uv2 = self.gp0_shaded_textured_quad_words[7];
+                const c3_word = self.gp0_shaded_textured_quad_words[8];
+                const xy3 = self.gp0_shaded_textured_quad_words[9];
+                const uv3 = self.gp0_shaded_textured_quad_words[10];
 
-                self.drawTexturedQuad2C();
+                const x0 = xyX(xy0) + self.draw_offset_x;
+                const y0 = xyY(xy0) + self.draw_offset_y;
+                const x1 = xyX(xy1) + self.draw_offset_x;
+                const y1 = xyY(xy1) + self.draw_offset_y;
+                const x2 = xyX(xy2) + self.draw_offset_x;
+                const y2 = xyY(xy2) + self.draw_offset_y;
+                const x3 = xyX(xy3) + self.draw_offset_x;
+                const y3 = xyY(xy3) + self.draw_offset_y;
 
+                const c0 = self.gp0_shaded_textured_quad_color;
+                const c1 = rgb24ToRgb555(c1_word);
+                const c2 = rgb24ToRgb555(c2_word);
+                const c3 = rgb24ToRgb555(c3_word);
+                const tpage = (uv1 >> 16) & 0xFFFF;
+
+                self.drawShadedTexturedTriangleWithTpage(
+                    x0,
+                    y0,
+                    uv0,
+                    c0,
+                    x1,
+                    y1,
+                    uv1,
+                    c1,
+                    x2,
+                    y2,
+                    uv2,
+                    c2,
+                    tpage,
+                );
+                self.drawShadedTexturedTriangleWithTpage(
+                    x1,
+                    y1,
+                    uv1,
+                    c1,
+                    x2,
+                    y2,
+                    uv2,
+                    c2,
+                    x3,
+                    y3,
+                    uv3,
+                    c3,
+                    tpage,
+                );
                 self.gp0_shaded_textured_quad_active = false;
                 self.gp0_shaded_textured_quad_index = 0;
             }
@@ -545,8 +594,26 @@ pub const Gpu = struct {
                 const x2 = xyX(xy2) + self.draw_offset_x;
                 const y2 = xyY(xy2) + self.draw_offset_y;
 
-                self.drawTexturedTriangle(x0, y0, uv0, x1, y1, uv1, x2, y2, uv2);
+                const c0 = self.gp0_shaded_textured_tri_color;
+                const c1 = rgb24ToRgb555(self.gp0_shaded_textured_tri_words[2]);
+                const c2 = rgb24ToRgb555(self.gp0_shaded_textured_tri_words[5]);
+                const tpage = (uv1 >> 16) & 0xFFFF;
 
+                self.drawShadedTexturedTriangleWithTpage(
+                    x0,
+                    y0,
+                    uv0,
+                    c0,
+                    x1,
+                    y1,
+                    uv1,
+                    c1,
+                    x2,
+                    y2,
+                    uv2,
+                    c2,
+                    tpage,
+                );
                 self.gp0_shaded_textured_tri_active = false;
                 self.gp0_shaded_textured_tri_index = 0;
             }
@@ -927,12 +994,14 @@ pub const Gpu = struct {
             },
             0x34, 0x36 => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.gp0_shaded_textured_tri_color = rgb24ToRgb555(value);
                 self.gp0_shaded_textured_tri_active = true;
                 self.gp0_shaded_textured_tri_index = 0;
                 return;
             },
             0x3C, 0x3E => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.gp0_shaded_textured_quad_color = rgb24ToRgb555(value);
                 self.gp0_shaded_textured_quad_active = true;
                 self.gp0_shaded_textured_quad_index = 0;
                 return;
@@ -959,6 +1028,7 @@ pub const Gpu = struct {
             0x64, 0x65, 0x66, 0x67 => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_textured_rect_color = rgb24ToRgb555(value);
+                self.gp0_textured_rect_raw_texture = gp0CommandRawTexture(cmd);
                 self.gp0_textured_rect_active = true;
                 self.gp0_textured_rect_index = 0;
             },
@@ -977,6 +1047,7 @@ pub const Gpu = struct {
             0x74, 0x75, 0x76, 0x77 => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_textured_rect_color = rgb24ToRgb555(value);
+                self.gp0_fixed_textured_rect_raw_texture = gp0CommandRawTexture(cmd);
                 self.gp0_fixed_textured_rect_w = 8;
                 self.gp0_fixed_textured_rect_h = 8;
                 self.gp0_fixed_textured_rect_active = true;
@@ -997,6 +1068,7 @@ pub const Gpu = struct {
             0x7C, 0x7D, 0x7E, 0x7F => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_textured_rect_color = rgb24ToRgb555(value);
+                self.gp0_fixed_textured_rect_raw_texture = gp0CommandRawTexture(cmd);
                 self.gp0_fixed_textured_rect_w = 16;
                 self.gp0_fixed_textured_rect_h = 16;
                 self.gp0_fixed_textured_rect_active = true;
@@ -1005,6 +1077,7 @@ pub const Gpu = struct {
             0x6C, 0x6D, 0x6E, 0x6F => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_textured_rect_color = rgb24ToRgb555(value);
+                self.gp0_fixed_textured_rect_raw_texture = gp0CommandRawTexture(cmd);
                 self.gp0_fixed_textured_rect_w = 1;
                 self.gp0_fixed_textured_rect_h = 1;
                 self.gp0_fixed_textured_rect_active = true;
@@ -1611,6 +1684,114 @@ pub const Gpu = struct {
             }
         }
     }
+    fn drawShadedTexturedTriangleWithTpage(
+        self: *Gpu,
+        x0: i32,
+        y0: i32,
+        uv0_word: u32,
+        c0: u16,
+        x1: i32,
+        y1: i32,
+        uv1_word: u32,
+        c1: u16,
+        x2: i32,
+        y2: i32,
+        uv2_word: u32,
+        c2: u16,
+        tpage: u32,
+    ) void {
+        var min_x = x0;
+        var max_x = x0;
+        var min_y = y0;
+        var max_y = y0;
+
+        if (x1 < min_x) min_x = x1;
+        if (x1 > max_x) max_x = x1;
+        if (y1 < min_y) min_y = y1;
+        if (y1 > max_y) max_y = y1;
+
+        if (x2 < min_x) min_x = x2;
+        if (x2 > max_x) max_x = x2;
+        if (y2 < min_y) min_y = y2;
+        if (y2 > max_y) max_y = y2;
+
+        if (max_x < 0 or max_y < 0 or min_x >= 1024 or min_y >= 512) return;
+
+        if (min_x < 0) min_x = 0;
+        if (min_y < 0) min_y = 0;
+        if (max_x > 1023) max_x = 1023;
+        if (max_y > 511) max_y = 511;
+
+        if (min_x < self.draw_area_left) min_x = self.draw_area_left;
+        if (min_y < self.draw_area_top) min_y = self.draw_area_top;
+        if (max_x > self.draw_area_right) max_x = self.draw_area_right;
+        if (max_y > self.draw_area_bottom) max_y = self.draw_area_bottom;
+
+        if (max_x < min_x or max_y < min_y) return;
+
+        const area = edgeFunction(x0, y0, x1, y1, x2, y2);
+        if (area == 0) return;
+
+        const flip = area < 0;
+        const area_abs: u64 = @intCast(if (area > 0) area else -area);
+        const area2_abs = area_abs * 2;
+
+        const tex_u0 = uvU(uv0_word);
+        const tex_v0 = uvV(uv0_word);
+        const tex_u1 = uvU(uv1_word);
+        const tex_v1 = uvV(uv1_word);
+        const tex_u2 = uvU(uv2_word);
+        const tex_v2 = uvV(uv2_word);
+
+        const clx = clutX(uv0_word);
+        const cly = clutY(uv0_word);
+
+        const tex_base_x = texturePageBaseX(tpage);
+        const tex_base_y = texturePageBaseY(tpage);
+        const tex_mode = textureMode(tpage);
+
+        const e0_tl = isTopLeftEdge(x1, y1, x2, y2);
+        const e1_tl = isTopLeftEdge(x2, y2, x0, y0);
+        const e2_tl = isTopLeftEdge(x0, y0, x1, y1);
+
+        var y: i32 = min_y;
+        while (y <= max_y) : (y += 1) {
+            var x: i32 = min_x;
+            while (x <= max_x) : (x += 1) {
+                const px2 = x * 2 + 1;
+                const py2 = y * 2 + 1;
+
+                var ew0 = edgeFunction2(x1, y1, x2, y2, px2, py2);
+                var ew1 = edgeFunction2(x2, y2, x0, y0, px2, py2);
+                var ew2 = edgeFunction2(x0, y0, x1, y1, px2, py2);
+
+                if (flip) {
+                    ew0 = -ew0;
+                    ew1 = -ew1;
+                    ew2 = -ew2;
+                }
+
+                if (edgeInside(ew0, e0_tl) and edgeInside(ew1, e1_tl) and edgeInside(ew2, e2_tl)) {
+                    const w0: u64 = @intCast(ew0);
+                    const w1: u64 = @intCast(ew1);
+                    const w2: u64 = @intCast(ew2);
+
+                    const tu: u32 = @intCast(
+                        (@as(u64, tex_u0) * w0 + @as(u64, tex_u1) * w1 + @as(u64, tex_u2) * w2) / area2_abs,
+                    );
+                    const tv: u32 = @intCast(
+                        (@as(u64, tex_v0) * w0 + @as(u64, tex_v1) * w1 + @as(u64, tex_v2) * w2) / area2_abs,
+                    );
+
+                    const tex_px = self.sampleTextureMode(tex_mode, tex_base_x, tex_base_y, clx, cly, tu, tv);
+                    if (tex_px == 0) continue;
+
+                    const shade = mixRgb555(c0, c1, c2, w0, w1, w2, area2_abs);
+                    self.putPixel(x, y, modulateRgb555(tex_px, shade));
+                }
+            }
+        }
+    }
 
     fn drawTexturedTriangle(
         self: *Gpu,
@@ -1626,21 +1807,6 @@ pub const Gpu = struct {
     ) void {
         const tpage = (uv1_word >> 16) & 0xFFFF;
         self.drawTexturedTriangleWithTpage(x0, y0, uv0_word, x1, y1, uv1_word, x2, y2, uv2_word, tpage);
-    }
-
-    fn drawTexturedTriangleUsingDrawMode(
-        self: *Gpu,
-        x0: i32,
-        y0: i32,
-        uv0_word: u32,
-        x1: i32,
-        y1: i32,
-        uv1_word: u32,
-        x2: i32,
-        y2: i32,
-        uv2_word: u32,
-    ) void {
-        self.drawTexturedTriangleWithTpage(x0, y0, uv0_word, x1, y1, uv1_word, x2, y2, uv2_word, self.draw_mode);
     }
 
     fn drawFilledQuadBBox(self: *Gpu) void {
