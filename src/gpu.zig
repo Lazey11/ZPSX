@@ -895,7 +895,7 @@ pub const Gpu = struct {
             0x01 => {},
             0x03 => {},
             0x02 => {
-                self.gp0_draw_semi_transparent = false;
+                self.clearGp0DrawSemiTransparent();
                 self.gp0_vram_fill_color = rgb24ToRgb555(value);
                 self.gp0_vram_fill_active = true;
                 self.gp0_vram_fill_index = 0;
@@ -1018,7 +1018,7 @@ pub const Gpu = struct {
                 self.gp0_fixed_rect_active = true;
             },
             0x80 => {
-                self.gp0_draw_semi_transparent = false;
+                self.clearGp0DrawSemiTransparent();
                 self.gp0_vram_copy_active = true;
                 self.gp0_vram_copy_index = 0;
             },
@@ -1041,7 +1041,7 @@ pub const Gpu = struct {
                 self.gp0_fixed_textured_rect_index = 0;
             },
             0xE1 => {
-                self.gp0_draw_semi_transparent = false;
+                self.clearGp0DrawSemiTransparent();
                 self.draw_mode = value & 0x00FF_FFFF;
             },
             0xE2 => {
@@ -1070,16 +1070,16 @@ pub const Gpu = struct {
                 self.draw_offset_y = oy;
             },
             0xE6 => {
-                self.gp0_draw_semi_transparent = false;
+                self.clearGp0DrawSemiTransparent();
                 self.mask_set_on_draw = (value & 1) != 0;
                 self.mask_check_before_draw = (value & 2) != 0;
             },
             0xA0 => {
-                self.gp0_draw_semi_transparent = false;
+                self.clearGp0DrawSemiTransparent();
                 self.gp0_mode = 1;
             },
             0xC0 => {
-                self.gp0_draw_semi_transparent = false;
+                self.clearGp0DrawSemiTransparent();
                 self.gp0_mode = 4;
             },
             else => {
@@ -1543,6 +1543,10 @@ pub const Gpu = struct {
 
     fn setGp0DrawSemiTransparentFromCommand(self: *Gpu, cmd: u8) void {
         self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+    }
+
+    fn clearGp0DrawSemiTransparent(self: *Gpu) void {
+        self.gp0_draw_semi_transparent = false;
     }
 
     fn gp0CommandRawTexture(cmd: u8) bool {
