@@ -1445,6 +1445,18 @@ pub const Gpu = struct {
         );
     }
 
+    const TriangleTexCoord = struct {
+        u: u32,
+        v: u32,
+    };
+
+    fn triangleTexCoord(tex: TriangleTextureSetup, weights: TriangleWeights, area: u64) TriangleTexCoord {
+        return .{
+            .u = triangleInterpolateU8(tex.u0, tex.u1, tex.u2, weights, area),
+            .v = triangleInterpolateU8(tex.v0, tex.v1, tex.v2, weights, area),
+        };
+    }
+
     fn triangleEdges(x0: i32, y0: i32, x1: i32, y1: i32, x2: i32, y2: i32) ?TriangleEdges {
         const area = edgeFunction(x0, y0, x1, y1, x2, y2);
         if (area == 0) return null;
@@ -1665,13 +1677,12 @@ pub const Gpu = struct {
 
                 const weights = triangleWeights(x0, y0, x1, y1, x2, y2, px2, py2, edges) orelse continue;
 
-                const tu = triangleInterpolateU8(tex.u0, tex.u1, tex.u2, weights, edges.area2_abs);
-                const tv = triangleInterpolateU8(tex.v0, tex.v1, tex.v2, weights, edges.area2_abs);
+                const tc = triangleTexCoord(tex, weights, edges.area2_abs);
 
-                const px = self.sampleTextureMode(tex.tex_mode, tex.tex_base_x, tex.tex_base_y, tex.clx, tex.cly, tu, tv);
-                if (px == 0) continue;
+                const tex_px = self.sampleTextureMode(tex.tex_mode, tex.tex_base_x, tex.tex_base_y, tex.clx, tex.cly, tc.u, tc.v);
+                if (tex_px == 0) continue;
 
-                self.putPixel(x, y, px);
+                self.putPixel(x, y, tex_px);
             }
         }
     }
@@ -1706,10 +1717,9 @@ pub const Gpu = struct {
 
                 const weights = triangleWeights(x0, y0, x1, y1, x2, y2, px2, py2, edges) orelse continue;
 
-                const tu = triangleInterpolateU8(tex.u0, tex.u1, tex.u2, weights, edges.area2_abs);
-                const tv = triangleInterpolateU8(tex.v0, tex.v1, tex.v2, weights, edges.area2_abs);
+                const tc = triangleTexCoord(tex, weights, edges.area2_abs);
 
-                const tex_px = self.sampleTextureMode(tex.tex_mode, tex.tex_base_x, tex.tex_base_y, tex.clx, tex.cly, tu, tv);
+                const tex_px = self.sampleTextureMode(tex.tex_mode, tex.tex_base_x, tex.tex_base_y, tex.clx, tex.cly, tc.u, tc.v);
                 if (tex_px == 0) continue;
 
                 const shade = mixRgb555(c0, c1, c2, weights.w0, weights.w1, weights.w2, edges.area2_abs);
