@@ -111,10 +111,10 @@ pub const Gpu = struct {
     gp0_dot_color: u16 = 0,
     gp0_dot_active: bool = false,
 
-    gp0_variable_rect_color: u16 = 0,
-    gp0_variable_rect_words: [3]u32 = [_]u32{0} ** 3,
-    gp0_variable_rect_index: u8 = 0,
-    gp0_variable_rect_active: bool = false,
+    gp0_sprite_color: u16 = 0,
+    gp0_sprite_words: [3]u32 = [_]u32{0} ** 3,
+    gp0_sprite_index: u8 = 0,
+    gp0_sprite_active: bool = false,
 
     gp0_fixed_rect_color: u16 = 0,
     gp0_fixed_rect_w: u32 = 0,
@@ -382,14 +382,12 @@ pub const Gpu = struct {
 
             return;
         }
-
         if (self.gp0_fixed_rect_active) {
-            const x = xyX(value) + self.draw_offset_x;
-            const y = xyY(value) + self.draw_offset_y;
+            const p = self.offsetPoint(value);
 
             self.drawFilledRect(
-                x,
-                y,
+                p.x,
+                p.y,
                 self.gp0_fixed_rect_w,
                 self.gp0_fixed_rect_h,
                 self.gp0_fixed_rect_color,
@@ -398,25 +396,27 @@ pub const Gpu = struct {
             return;
         }
 
-        if (self.gp0_textured_rect_active) {
-            self.gp0_textured_rect_words[self.gp0_textured_rect_index] = value;
-            self.gp0_textured_rect_index += 1;
+        if (self.gp0_sprite_active) {
+            self.gp0_sprite_words[self.gp0_sprite_index] = value;
+            self.gp0_sprite_index += 1;
 
-            if (self.gp0_textured_rect_index == 3) {
-                const xy = self.gp0_textured_rect_words[0];
-                const uv = self.gp0_textured_rect_words[1];
-                const size = self.gp0_textured_rect_words[2];
+            if (self.gp0_sprite_index == 3) {
+                const xy = self.gp0_sprite_words[0];
+                const size = self.gp0_sprite_words[2];
 
-                const x = xyX(xy) + self.draw_offset_x;
-                const y = xyY(xy) + self.draw_offset_y;
-                const w: u32 = @intCast(size & 0xFFFF);
-                const h: u32 = @intCast((size >> 16) & 0xFFFF);
+                const p = self.offsetPoint(xy);
+                const size_rect = rectSize(size);
 
-                self.drawTexturedRect(x, y, uv, w, h, self.gp0_textured_rect_raw_texture);
-                self.gp0_textured_rect_active = false;
-                self.gp0_textured_rect_index = 0;
+                self.drawFilledRect(
+                    p.x,
+                    p.y,
+                    size_rect.w,
+                    size_rect.h,
+                    self.gp0_sprite_color,
+                );
+                self.gp0_sprite_active = false;
+                self.gp0_sprite_index = 0;
             }
-
             return;
         }
 
@@ -428,12 +428,11 @@ pub const Gpu = struct {
                 const xy = self.gp0_fixed_textured_rect_words[0];
                 const uv = self.gp0_fixed_textured_rect_words[1];
 
-                const x = xyX(xy) + self.draw_offset_x;
-                const y = xyY(xy) + self.draw_offset_y;
+                const p = self.offsetPoint(xy);
 
                 self.drawTexturedRect(
-                    x,
-                    y,
+                    p.x,
+                    p.y,
                     uv,
                     self.gp0_fixed_textured_rect_w,
                     self.gp0_fixed_textured_rect_h,
@@ -447,22 +446,30 @@ pub const Gpu = struct {
             return;
         }
 
-        if (self.gp0_variable_rect_active) {
-            self.gp0_variable_rect_words[self.gp0_variable_rect_index] = value;
-            self.gp0_variable_rect_index += 1;
+        if (self.gp0_textured_rect_active) {
+            self.gp0_textured_rect_words[self.gp0_textured_rect_index] = value;
+            self.gp0_textured_rect_index += 1;
 
-            if (self.gp0_variable_rect_index == 3) {
-                const xy = self.gp0_variable_rect_words[0];
-                const size = self.gp0_variable_rect_words[2];
+            if (self.gp0_textured_rect_index == 3) {
+                const xy = self.gp0_textured_rect_words[0];
+                const uv = self.gp0_textured_rect_words[1];
+                const size = self.gp0_textured_rect_words[2];
 
                 const p = self.offsetPoint(xy);
-                const w: u32 = @intCast(size & 0xFFFF);
-                const h: u32 = @intCast((size >> 16) & 0xFFFF);
+                const size_rect = rectSize(size);
 
-                self.drawFilledRect(p.x, p.y, w, h, self.gp0_variable_rect_color);
-                self.gp0_variable_rect_active = false;
-                self.gp0_variable_rect_index = 0;
+                self.drawTexturedRect(
+                    p.x,
+                    p.y,
+                    uv,
+                    size_rect.w,
+                    size_rect.h,
+                    self.gp0_textured_rect_raw_texture,
+                );
+                self.gp0_textured_rect_active = false;
+                self.gp0_textured_rect_index = 0;
             }
+
             return;
         }
 
@@ -476,10 +483,15 @@ pub const Gpu = struct {
 
                 const x: i32 = @intCast(xy & 0xFFFF);
                 const y: i32 = @intCast((xy >> 16) & 0xFFFF);
-                const w: u32 = @intCast(size & 0xFFFF);
-                const h: u32 = @intCast((size >> 16) & 0xFFFF);
+                const size_rect = rectSize(size);
 
-                self.drawFilledRect(x, y, w, h, self.gp0_vram_fill_color);
+                self.drawFilledRect(
+                    x,
+                    y,
+                    size_rect.w,
+                    size_rect.h,
+                    self.gp0_vram_fill_color,
+                );
                 self.gp0_vram_fill_active = false;
                 self.gp0_vram_fill_index = 0;
             }
@@ -1001,9 +1013,9 @@ pub const Gpu = struct {
             },
             0x60, 0x62, 0x6A => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
-                self.gp0_variable_rect_color = rgb24ToRgb555(value);
-                self.gp0_variable_rect_active = true;
-                self.gp0_variable_rect_index = 0;
+                self.gp0_sprite_color = rgb24ToRgb555(value);
+                self.gp0_sprite_active = true;
+                self.gp0_sprite_index = 0;
             },
             0x64, 0x65, 0x66, 0x67 => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
@@ -1486,6 +1498,18 @@ pub const Gpu = struct {
         return .{
             .x = xyX(word) + self.draw_offset_x,
             .y = xyY(word) + self.draw_offset_y,
+        };
+    }
+
+    const RectSize = struct {
+        w: u32,
+        h: u32,
+    };
+
+    fn rectSize(word: u32) RectSize {
+        return .{
+            .w = @intCast(word & 0xFFFF),
+            .h = @intCast((word >> 16) & 0xFFFF),
         };
     }
 
