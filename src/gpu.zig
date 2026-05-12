@@ -347,12 +347,14 @@ pub const Gpu = struct {
 
         const tex_base_x = texturePageBaseX(self.draw_mode);
         const tex_base_y = texturePageBaseY(self.draw_mode);
+        const tex_mode = textureMode(self.draw_mode);
 
         var yy: u32 = 0;
         while (yy < h) : (yy += 1) {
             var xx: u32 = 0;
             while (xx < w) : (xx += 1) {
-                const px = self.sampleTexture(
+                const px = self.sampleTextureMode(
+                    tex_mode,
                     tex_base_x,
                     tex_base_y,
                     clx,
@@ -370,7 +372,6 @@ pub const Gpu = struct {
             }
         }
     }
-
     pub fn writeGp0(self: *Gpu, pc: u32, value: u32) void {
         const cmd: u8 = @intCast(value >> 24);
         self.gp0_last = value;
@@ -1030,8 +1031,10 @@ pub const Gpu = struct {
             },
             0x6C, 0x6D, 0x6E, 0x6F => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
-                self.gp0_textured_rect_active = true;
-                self.gp0_textured_rect_index = 0;
+                self.gp0_fixed_textured_rect_w = 1;
+                self.gp0_fixed_textured_rect_h = 1;
+                self.gp0_fixed_textured_rect_active = true;
+                self.gp0_fixed_textured_rect_index = 0;
             },
 
             0xE1 => {
