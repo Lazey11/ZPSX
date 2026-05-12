@@ -124,6 +124,7 @@ pub const Gpu = struct {
     gp0_vram_fill_index: u8 = 0,
     gp0_vram_fill_active: bool = false,
 
+    gp0_textured_rect_color: u16 = 0x7FFF,
     gp0_textured_rect_words: [3]u32 = [_]u32{0} ** 3,
     gp0_textured_rect_index: u8 = 0,
     gp0_textured_rect_active: bool = false,
@@ -148,18 +149,15 @@ pub const Gpu = struct {
     pub fn readStatus(self: *const Gpu) u32 {
         var value: u32 = self.status;
 
-        // Bit 23: display disabled.
         if (self.display_disabled) {
             value |= @as(u32, 1) << 23;
         } else {
             value &= ~(@as(u32, 1) << 23);
         }
 
-        // Bits 29-30: DMA direction.
         value &= ~(@as(u32, 0x3) << 29);
         value |= (self.dma_direction & 0x3) << 29;
 
-        // Ready for command, ready to send VRAM, ready for DMA block.
         value |= 0x1C00_0000;
 
         return value;
@@ -204,24 +202,29 @@ pub const Gpu = struct {
     fn textureMode(draw_mode: u32) u32 {
         return (draw_mode >> 7) & 0x3;
     }
+
     fn textureWindowMaskX(texture_window: u32) u32 {
         return texture_window & 0x1F;
     }
+
     fn textureWindowMaskY(texture_window: u32) u32 {
         return (texture_window >> 5) & 0x1F;
     }
+
     fn textureWindowOffsetX(texture_window: u32) u32 {
         return (texture_window >> 10) & 0x1F;
     }
+
     fn textureWindowOffsetY(texture_window: u32) u32 {
         return (texture_window >> 15) & 0x1F;
     }
+
     fn applyTextureWindowCoord(coord: u32, mask: u32, offset: u32) u32 {
         const mask_pixels = mask * 8;
         const offset_pixels = offset * 8;
-
         return (coord & ~mask_pixels) | (offset_pixels & mask_pixels);
     }
+
     fn textureWindowU(self: *const Gpu, u: u32) u32 {
         return applyTextureWindowCoord(
             u,
@@ -229,9 +232,10 @@ pub const Gpu = struct {
             textureWindowOffsetX(self.texture_window),
         );
     }
-    fn textureWindowV(self: *const Gpu, u: u32) u32 {
+
+    fn textureWindowV(self: *const Gpu, v: u32) u32 {
         return applyTextureWindowCoord(
-            u,
+            v,
             textureWindowMaskY(self.texture_window),
             textureWindowOffsetY(self.texture_window),
         );
@@ -243,9 +247,9 @@ pub const Gpu = struct {
         if (tex_x >= 1024 or tex_y >= 512) return 0;
         if (clut_x >= 1024 or clut_y >= 512) return 0;
 
-        const _packed = self.vram[@intCast(tex_y * 1024 + tex_x)];
+        const tex_word = self.vram[@intCast(tex_y * 1024 + tex_x)];
         const shift: u4 = @intCast((u & 3) * 4);
-        const index: u32 = (_packed >> shift) & 0xF;
+        const index: u32 = (tex_word >> shift) & 0xF;
 
         return self.vram[@intCast(clut_y * 1024 + clut_x + index)];
     }
@@ -256,9 +260,9 @@ pub const Gpu = struct {
         if (tex_x >= 1024 or tex_y >= 512) return 0;
         if (clut_x >= 1024 or clut_y >= 512) return 0;
 
-        const _packed = self.vram[@intCast(tex_y * 1024 + tex_x)];
+        const tex_word = self.vram[@intCast(tex_y * 1024 + tex_x)];
         const shift: u4 = if ((u & 1) == 0) 0 else 8;
-        const index: u32 = (_packed >> shift) & 0xFF;
+        const index: u32 = (tex_word >> shift) & 0xFF;
 
         return self.vram[@intCast(clut_y * 1024 + clut_x + index)];
     }
@@ -291,17 +295,6 @@ pub const Gpu = struct {
         };
     }
 
-    fn sampleTexture(self: *const Gpu, tex_base_x: u32, tex_base_y: u32, clut_x: u32, clut_y: u32, u: u32, v: u32) u16 {
-        return self.sampleTextureMode(
-            textureMode(self.draw_mode),
-            tex_base_x,
-            tex_base_y,
-            clut_x,
-            clut_y,
-            u,
-            v,
-        );
-    }
     fn drawTexturedQuad2C(self: *Gpu) void {
         const xy0_word = self.gp0_textured_quad_words[0];
         const uv0_word = self.gp0_textured_quad_words[1];
@@ -339,7 +332,7 @@ pub const Gpu = struct {
         }
     }
 
-    fn drawTexturedRect(self: *Gpu, x: i32, y: i32, uv_word: u32, w: u32, h: u32) void {
+    fn drawTexturedRect(self: *Gpu, x: i32, y: i32, uv_word: u32, w: u32, h: u32, raw_texture: bool) void {
         const tex_u0 = uvU(uv_word);
         const tex_v0 = uvV(uv_word);
         const clx = clutX(uv_word);
@@ -364,14 +357,17 @@ pub const Gpu = struct {
                 );
                 if (px == 0) continue;
 
+                const out = if (raw_texture) px else modulateRgb555(px, self.gp0_textured_rect_color);
+
                 self.putPixel(
                     x + @as(i32, @intCast(xx)),
                     y + @as(i32, @intCast(yy)),
-                    px,
+                    out,
                 );
             }
         }
     }
+
     pub fn writeGp0(self: *Gpu, pc: u32, value: u32) void {
         const cmd: u8 = @intCast(value >> 24);
         self.gp0_last = value;
@@ -431,7 +427,7 @@ pub const Gpu = struct {
                 const w: u32 = @intCast(size & 0xFFFF);
                 const h: u32 = @intCast((size >> 16) & 0xFFFF);
 
-                self.drawTexturedRect(x, y, uv, w, h);
+                self.drawTexturedRect(x, y, uv, w, h, gp0CommandRawTexture(@intCast(self.gp0_last >> 24)));
 
                 self.gp0_textured_rect_active = false;
                 self.gp0_textured_rect_index = 0;
@@ -457,6 +453,7 @@ pub const Gpu = struct {
                     uv,
                     self.gp0_fixed_textured_rect_w,
                     self.gp0_fixed_textured_rect_h,
+                    gp0CommandRawTexture(@intCast(self.gp0_last >> 24)),
                 );
 
                 self.gp0_fixed_textured_rect_active = false;
@@ -505,13 +502,12 @@ pub const Gpu = struct {
             }
             return;
         }
+
         if (self.gp0_shaded_textured_quad_active) {
             self.gp0_shaded_textured_quad_words[self.gp0_shaded_textured_quad_index] = value;
             self.gp0_shaded_textured_quad_index += 1;
 
             if (self.gp0_shaded_textured_quad_index == 11) {
-                // 0x3C packet after command:
-                // xy0, uv0, color1, xy1, uv1, color2, xy2, uv2, color3, xy3, uv3
                 self.gp0_textured_quad_words[0] = self.gp0_shaded_textured_quad_words[0];
                 self.gp0_textured_quad_words[1] = self.gp0_shaded_textured_quad_words[1];
                 self.gp0_textured_quad_words[2] = self.gp0_shaded_textured_quad_words[3];
@@ -529,6 +525,7 @@ pub const Gpu = struct {
 
             return;
         }
+
         if (self.gp0_shaded_textured_tri_active) {
             self.gp0_shaded_textured_tri_words[self.gp0_shaded_textured_tri_index] = value;
             self.gp0_shaded_textured_tri_index += 1;
@@ -556,6 +553,7 @@ pub const Gpu = struct {
 
             return;
         }
+
         if (self.gp0_textured_tri_active) {
             self.gp0_textured_tri_words[self.gp0_textured_tri_index] = value;
             self.gp0_textured_tri_index += 1;
@@ -714,6 +712,7 @@ pub const Gpu = struct {
 
             return;
         }
+
         if (self.gp0_polyline_active) {
             if (value == 0x5555_5555 or value == 0x5000_5000) {
                 self.gp0_polyline_active = false;
@@ -825,7 +824,6 @@ pub const Gpu = struct {
                 self.vram_w = @intCast(value & 0xFFFF);
                 self.vram_h = @intCast((value >> 16) & 0xFFFF);
 
-                // PS1 GPU treats 0 as max dimension for image copy commands.
                 if (self.vram_w == 0) self.vram_w = 1024;
                 if (self.vram_h == 0) self.vram_h = 512;
 
@@ -862,17 +860,6 @@ pub const Gpu = struct {
                 if (self.vram_h == 0) self.vram_h = 512;
 
                 self.gp0_mode = 0;
-
-                //std.debug.print(
-                //  "GP0 IMAGE READ x={} y={} w={} h={}\n",
-                //.{
-                //  self.vram_x,
-                //self.vram_y,
-                //self.vram_w,
-                //self.vram_h,
-                //},
-                //);
-
                 return;
             },
 
@@ -880,9 +867,9 @@ pub const Gpu = struct {
         }
 
         switch (cmd) {
-            0x00 => {}, // NOP
-            0x01 => {}, // clear cache
-            0x03 => {}, // unknown/no-op
+            0x00 => {},
+            0x01 => {},
+            0x03 => {},
             0x02 => {
                 self.gp0_draw_semi_transparent = false;
                 self.gp0_vram_fill_color = rgb24ToRgb555(value);
@@ -896,7 +883,6 @@ pub const Gpu = struct {
                 self.gp0_tri_vertex_index = 0;
             },
             0x28, 0x2A => {
-                //std.debug.print("GP0 QUAD 0x28 color=0x{X:0>6}\n", .{value & 0x00FF_FFFF});
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_quad_color = rgb24ToRgb555(value);
                 self.gp0_quad_active = true;
@@ -972,23 +958,16 @@ pub const Gpu = struct {
             },
             0x64, 0x65, 0x66, 0x67 => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.gp0_textured_rect_color = rgb24ToRgb555(value);
                 self.gp0_textured_rect_active = true;
                 self.gp0_textured_rect_index = 0;
             },
-
             0x68 => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_dot_color = rgb24ToRgb555(value);
                 self.gp0_dot_active = true;
             },
-            0x70 => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
-                self.gp0_fixed_rect_color = rgb24ToRgb555(value);
-                self.gp0_fixed_rect_w = 8;
-                self.gp0_fixed_rect_h = 8;
-                self.gp0_fixed_rect_active = true;
-            },
-            0x72 => {
+            0x70, 0x72 => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_fixed_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_rect_w = 8;
@@ -997,12 +976,13 @@ pub const Gpu = struct {
             },
             0x74, 0x75, 0x76, 0x77 => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.gp0_textured_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_textured_rect_w = 8;
                 self.gp0_fixed_textured_rect_h = 8;
                 self.gp0_fixed_textured_rect_active = true;
                 self.gp0_fixed_textured_rect_index = 0;
             },
-            0x78 => {
+            0x78, 0x7A => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
                 self.gp0_fixed_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_rect_w = 16;
@@ -1014,16 +994,9 @@ pub const Gpu = struct {
                 self.gp0_vram_copy_active = true;
                 self.gp0_vram_copy_index = 0;
             },
-            0x7A => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
-                self.gp0_fixed_rect_color = rgb24ToRgb555(value);
-                self.gp0_fixed_rect_w = 16;
-                self.gp0_fixed_rect_h = 16;
-                self.gp0_fixed_rect_active = true;
-            },
-
             0x7C, 0x7D, 0x7E, 0x7F => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.gp0_textured_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_textured_rect_w = 16;
                 self.gp0_fixed_textured_rect_h = 16;
                 self.gp0_fixed_textured_rect_active = true;
@@ -1031,29 +1004,29 @@ pub const Gpu = struct {
             },
             0x6C, 0x6D, 0x6E, 0x6F => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.gp0_textured_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_textured_rect_w = 1;
                 self.gp0_fixed_textured_rect_h = 1;
                 self.gp0_fixed_textured_rect_active = true;
                 self.gp0_fixed_textured_rect_index = 0;
             },
-
             0xE1 => {
                 self.gp0_draw_semi_transparent = false;
                 self.draw_mode = value & 0x00FF_FFFF;
-            }, // draw mode
+            },
             0xE2 => {
                 self.texture_window = value & 0x00FF_FFFF;
-            }, // texture window
+            },
             0xE3 => {
                 const p = value & 0x00FF_FFFF;
                 self.draw_area_left = @intCast(p & 0x3FF);
                 self.draw_area_top = @intCast((p >> 10) & 0x1FF);
-            }, // drawing area top-left
+            },
             0xE4 => {
                 const p = value & 0x00FF_FFFF;
                 self.draw_area_right = @intCast(p & 0x3FF);
                 self.draw_area_bottom = @intCast((p >> 10) & 0x1FF);
-            }, // drawing area bottom-right
+            },
             0xE5 => {
                 const p = value & 0x00FF_FFFF;
                 const ox_raw: u16 = @intCast(p & 0x7FF);
@@ -1065,23 +1038,20 @@ pub const Gpu = struct {
 
                 self.draw_offset_x = ox;
                 self.draw_offset_y = oy;
-            }, // drawing offset
+            },
             0xE6 => {
                 self.gp0_draw_semi_transparent = false;
                 self.mask_set_on_draw = (value & 1) != 0;
                 self.mask_check_before_draw = (value & 2) != 0;
-            }, // mask bit setting
-
+            },
             0xA0 => {
                 self.gp0_draw_semi_transparent = false;
                 self.gp0_mode = 1;
             },
-
             0xC0 => {
                 self.gp0_draw_semi_transparent = false;
                 self.gp0_mode = 4;
             },
-
             else => {
                 if (debug_f.enable_gpu_unsupported_trace and self.unsupported_gp0_log_count < 128) {
                     self.unsupported_gp0_log_count += 1;
@@ -1093,6 +1063,7 @@ pub const Gpu = struct {
             },
         }
     }
+
     pub fn readGP0(self: *const Gpu) u32 {
         return self.gpu_info_response;
     }
@@ -1130,6 +1101,7 @@ pub const Gpu = struct {
 
         self.image_index += 1;
     }
+
     fn copyVramRect(self: *Gpu, src_word: u32, dst_word: u32, size_word: u32) void {
         const src_x: u32 = @intCast(src_word & 0xFFFF);
         const src_y: u32 = @intCast((src_word >> 16) & 0xFFFF);
@@ -1283,6 +1255,7 @@ pub const Gpu = struct {
         const signed: i16 = @bitCast(raw);
         return @as(i32, signed);
     }
+
     fn vertexY(v: u32) i32 {
         const raw: u16 = @intCast((v >> 16) & 0xFFFF);
         const signed: i16 = @bitCast(raw);
@@ -1293,17 +1266,18 @@ pub const Gpu = struct {
         return @as(i64, bx - ax) * @as(i64, py - ay) -
             @as(i64, by - ay) * @as(i64, px - ax);
     }
+
     fn edgeFunction2(ax: i32, ay: i32, bx: i32, by: i32, px2: i32, py2: i32) i64 {
-        // Evaluates edge at half-pixel coordinates:
-        // px2/2, py2/2 where callers pass x*2+1, y*2+1.
         return @as(i64, bx - ax) * @as(i64, py2 - ay * 2) -
             @as(i64, by - ay) * @as(i64, px2 - ax * 2);
     }
+
     fn isTopLeftEdge(ax: i32, ay: i32, bx: i32, by: i32) bool {
         const dy = by - ay;
         const dx = bx - ax;
         return dy < 0 or (dy == 0 and dx > 0);
     }
+
     fn edgeInside(value: i64, top_left: bool) bool {
         return value > 0 or (value == 0 and top_left);
     }
@@ -1370,6 +1344,7 @@ pub const Gpu = struct {
             }
         }
     }
+
     fn rgb555R(color: u16) u32 {
         return color & 0x1F;
     }
@@ -1381,14 +1356,29 @@ pub const Gpu = struct {
     fn rgb555B(color: u16) u32 {
         return (color >> 10) & 0x1F;
     }
+
+    fn gp0CommandRawTexture(cmd: u8) bool {
+        return (cmd & 0x01) != 0;
+    }
+
+    fn modulateRgb555(tex: u16, color: u16) u16 {
+        const r = (rgb555R(tex) * rgb555R(color)) / 31;
+        const g = (rgb555G(tex) * rgb555G(color)) / 31;
+        const b = (rgb555B(tex) * rgb555B(color)) / 31;
+
+        return @intCast(r | (g << 5) | (b << 10));
+    }
+
     fn clamp5Signed(value: i32) u32 {
         if (value < 0) return 0;
         if (value > 31) return 31;
         return @intCast(value);
     }
+
     fn semiTransparencyMode(draw_mode: u32) u32 {
         return (draw_mode >> 5) & 0x3;
     }
+
     fn blendSemiTransparent(src: u16, dst: u16, mode: u32) u16 {
         const sr: i32 = @intCast(rgb555R(src));
         const sg: i32 = @intCast(rgb555G(src));
@@ -1399,10 +1389,10 @@ pub const Gpu = struct {
         const db: i32 = @intCast(rgb555B(dst));
 
         const r: u32 = switch (mode) {
-            0 => clamp5Signed(@divTrunc(dr + sr, 2)), // B/2 + F/2
-            1 => clamp5Signed(dr + sr), // B + F
-            2 => clamp5Signed(dr - sr), // B - F
-            3 => clamp5Signed(dr + @divTrunc(sr, 4)), // B + F/4
+            0 => clamp5Signed(@divTrunc(dr + sr, 2)),
+            1 => clamp5Signed(dr + sr),
+            2 => clamp5Signed(dr - sr),
+            3 => clamp5Signed(dr + @divTrunc(sr, 4)),
             else => clamp5Signed(sr),
         };
 
@@ -1652,6 +1642,7 @@ pub const Gpu = struct {
     ) void {
         self.drawTexturedTriangleWithTpage(x0, y0, uv0_word, x1, y1, uv1_word, x2, y2, uv2_word, self.draw_mode);
     }
+
     fn drawFilledQuadBBox(self: *Gpu) void {
         const x0 = vertexX(self.gp0_quad_vertices[0]) + self.draw_offset_x;
         const y0 = vertexY(self.gp0_quad_vertices[0]) + self.draw_offset_y;
@@ -1674,58 +1665,39 @@ pub const Gpu = struct {
 
         switch (cmd) {
             0x00 => {
-                // Reset GPU.
                 self.status = 0x1C00_0000;
                 self.gp0_mode = 0;
                 self.gp0_words_remaining = 0;
                 self.dma_direction = 0;
                 self.display_disabled = true;
             },
-
             0x01 => {
-                // Reset command buffer.
                 self.gp0_mode = 0;
                 self.gp0_words_remaining = 0;
             },
-
             0x02 => {
-                // Acknowledge GPU IRQ.
                 self.status &= ~(@as(u32, 1) << 24);
             },
-
             0x03 => {
                 self.display_disabled = (param & 1) != 0;
-                //  std.debug.print("GP1 display enable disabled={}\n", .{self.display_disabled});
             },
             0x04 => {
                 self.dma_direction = param & 0x3;
             },
-
             0x05 => {
                 self.display_x = @intCast(param & 0x3FF);
                 self.display_y = @intCast((param >> 10) & 0x1FF);
-
-                //std.debug.print("GP1 display start x={} y={}\n", .{ self.display_x, self.display_y });
             },
-
             0x06 => {
                 self.display_h_start = @intCast(param & 0xFFF);
                 self.display_h_end = @intCast((param >> 12) & 0xFFF);
-
-                //std.debug.print("GP1 display h range {}..{}\n", .{ self.display_h_start, self.display_h_end });
             },
-
             0x07 => {
                 self.display_v_start = @intCast(param & 0x3FF);
                 self.display_v_end = @intCast((param >> 10) & 0x3FF);
-
-                //std.debug.print("GP1 display v range {}..{}\n", .{ self.display_v_start, self.display_v_end });
             },
-
             0x08 => {
                 self.display_mode = param;
-
-                //std.debug.print("GP1 display mode 0x{X:0>6}\n", .{self.display_mode});
             },
             0x10 => {
                 self.gpu_info_response = switch (param & 0xF) {
@@ -1737,13 +1709,7 @@ pub const Gpu = struct {
                     else => 0,
                 };
             },
-
-            else => {
-                //std.debug.print(
-                //  "GP1 CMD PC=0x{X:0>8} cmd=0x{X:0>2} value=0x{X:0>8}\n",
-                //.{ pc, cmd, value },
-                //);
-            },
+            else => {},
         }
 
         self.status |= 0x1C00_0000;
