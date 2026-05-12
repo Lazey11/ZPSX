@@ -1437,6 +1437,13 @@ pub const Gpu = struct {
             .tex_mode = textureMode(tpage),
         };
     }
+    fn triangleInterpolateU8(a0: u32, a1: u32, a2: u32, weights: TriangleWeights, area: u64) u32 {
+        return @intCast(
+            (@as(u64, a0) * weights.w0 +
+                @as(u64, a1) * weights.w1 +
+                @as(u64, a2) * weights.w2) / area,
+        );
+    }
 
     fn triangleEdges(x0: i32, y0: i32, x1: i32, y1: i32, x2: i32, y2: i32) ?TriangleEdges {
         const area = edgeFunction(x0, y0, x1, y1, x2, y2);
@@ -1658,12 +1665,8 @@ pub const Gpu = struct {
 
                 const weights = triangleWeights(x0, y0, x1, y1, x2, y2, px2, py2, edges) orelse continue;
 
-                const tu: u32 = @intCast(
-                    (@as(u64, tex.u0) * weights.w0 + @as(u64, tex.u1) * weights.w1 + @as(u64, tex.u2) * weights.w2) / edges.area2_abs,
-                );
-                const tv: u32 = @intCast(
-                    (@as(u64, tex.v0) * weights.w0 + @as(u64, tex.v1) * weights.w1 + @as(u64, tex.v2) * weights.w2) / edges.area2_abs,
-                );
+                const tu = triangleInterpolateU8(tex.u0, tex.u1, tex.u2, weights, edges.area2_abs);
+                const tv = triangleInterpolateU8(tex.v0, tex.v1, tex.v2, weights, edges.area2_abs);
 
                 const px = self.sampleTextureMode(tex.tex_mode, tex.tex_base_x, tex.tex_base_y, tex.clx, tex.cly, tu, tv);
                 if (px == 0) continue;
@@ -1703,12 +1706,8 @@ pub const Gpu = struct {
 
                 const weights = triangleWeights(x0, y0, x1, y1, x2, y2, px2, py2, edges) orelse continue;
 
-                const tu: u32 = @intCast(
-                    (@as(u64, tex.u0) * weights.w0 + @as(u64, tex.u1) * weights.w1 + @as(u64, tex.u2) * weights.w2) / edges.area2_abs,
-                );
-                const tv: u32 = @intCast(
-                    (@as(u64, tex.v0) * weights.w0 + @as(u64, tex.v1) * weights.w1 + @as(u64, tex.v2) * weights.w2) / edges.area2_abs,
-                );
+                const tu = triangleInterpolateU8(tex.u0, tex.u1, tex.u2, weights, edges.area2_abs);
+                const tv = triangleInterpolateU8(tex.v0, tex.v1, tex.v2, weights, edges.area2_abs);
 
                 const tex_px = self.sampleTextureMode(tex.tex_mode, tex.tex_base_x, tex.tex_base_y, tex.clx, tex.cly, tu, tv);
                 if (tex_px == 0) continue;
