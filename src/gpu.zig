@@ -111,10 +111,10 @@ pub const Gpu = struct {
     gp0_dot_color: u16 = 0,
     gp0_dot_active: bool = false,
 
-    gp0_sprite_color: u16 = 0,
-    gp0_sprite_words: [3]u32 = [_]u32{0} ** 3,
-    gp0_sprite_index: u8 = 0,
-    gp0_sprite_active: bool = false,
+    gp0_variable_rect_color: u16 = 0,
+    gp0_variable_rect_words: [3]u32 = [_]u32{0} ** 3,
+    gp0_variable_rect_index: u8 = 0,
+    gp0_variable_rect_active: bool = false,
 
     gp0_fixed_rect_color: u16 = 0,
     gp0_fixed_rect_w: u32 = 0,
@@ -447,22 +447,21 @@ pub const Gpu = struct {
             return;
         }
 
-        if (self.gp0_sprite_active) {
-            self.gp0_sprite_words[self.gp0_sprite_index] = value;
-            self.gp0_sprite_index += 1;
+        if (self.gp0_variable_rect_active) {
+            self.gp0_variable_rect_words[self.gp0_variable_rect_index] = value;
+            self.gp0_variable_rect_index += 1;
 
-            if (self.gp0_sprite_index == 3) {
-                const xy = self.gp0_sprite_words[0];
-                const size = self.gp0_sprite_words[2];
+            if (self.gp0_variable_rect_index == 3) {
+                const xy = self.gp0_variable_rect_words[0];
+                const size = self.gp0_variable_rect_words[2];
 
-                const x = xyX(xy) + self.draw_offset_x;
-                const y = xyY(xy) + self.draw_offset_y;
+                const p = self.offsetPoint(xy);
                 const w: u32 = @intCast(size & 0xFFFF);
                 const h: u32 = @intCast((size >> 16) & 0xFFFF);
 
-                self.drawFilledRect(x, y, w, h, self.gp0_sprite_color);
-                self.gp0_sprite_active = false;
-                self.gp0_sprite_index = 0;
+                self.drawFilledRect(p.x, p.y, w, h, self.gp0_variable_rect_color);
+                self.gp0_variable_rect_active = false;
+                self.gp0_variable_rect_index = 0;
             }
             return;
         }
@@ -1002,9 +1001,9 @@ pub const Gpu = struct {
             },
             0x60, 0x62, 0x6A => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
-                self.gp0_sprite_color = rgb24ToRgb555(value);
-                self.gp0_sprite_active = true;
-                self.gp0_sprite_index = 0;
+                self.gp0_variable_rect_color = rgb24ToRgb555(value);
+                self.gp0_variable_rect_active = true;
+                self.gp0_variable_rect_index = 0;
             },
             0x64, 0x65, 0x66, 0x67 => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
