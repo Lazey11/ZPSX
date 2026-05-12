@@ -736,12 +736,10 @@ pub const Gpu = struct {
                 const xy0 = self.gp0_line_words[0];
                 const xy1 = self.gp0_line_words[1];
 
-                const x0 = xyX(xy0) + self.draw_offset_x;
-                const y0 = xyY(xy0) + self.draw_offset_y;
-                const x1 = xyX(xy1) + self.draw_offset_x;
-                const y1 = xyY(xy1) + self.draw_offset_y;
+                const p0 = self.offsetPoint(xy0);
+                const p1 = self.offsetPoint(xy1);
 
-                self.drawLine(x0, y0, x1, y1, self.gp0_line_color);
+                self.drawLine(p0.x, p0.y, p1.x, p1.y, self.gp0_line_color);
 
                 self.gp0_line_active = false;
                 self.gp0_line_index = 0;
