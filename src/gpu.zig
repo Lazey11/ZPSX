@@ -901,108 +901,108 @@ pub const Gpu = struct {
                 self.gp0_vram_fill_index = 0;
             },
             0x20, 0x22 => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_tri_color = rgb24ToRgb555(value);
                 self.gp0_tri_active = true;
                 self.gp0_tri_vertex_index = 0;
             },
             0x28, 0x2A => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_quad_color = rgb24ToRgb555(value);
                 self.gp0_quad_active = true;
                 self.gp0_quad_vertex_index = 0;
             },
             0x30, 0x32 => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_shaded_tri_color = rgb24ToRgb555(value);
                 self.gp0_shaded_tri_active = true;
                 self.gp0_shaded_tri_index = 0;
             },
             0x38, 0x3A => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_shaded_quad_color = rgb24ToRgb555(value);
                 self.gp0_shaded_quad_active = true;
                 self.gp0_shaded_quad_index = 0;
             },
             0x40, 0x42 => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_line_color = rgb24ToRgb555(value);
                 self.gp0_line_active = true;
                 self.gp0_line_index = 0;
             },
             0x48, 0x4A => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_polyline_color = rgb24ToRgb555(value);
                 self.gp0_polyline_active = true;
                 self.gp0_polyline_have_last = false;
             },
             0x50, 0x52 => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_shaded_line_color0 = rgb24ToRgb555(value);
                 self.gp0_shaded_line_active = true;
                 self.gp0_shaded_line_index = 0;
             },
             0x58, 0x5A => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_shaded_polyline_pending_color = rgb24ToRgb555(value);
                 self.gp0_shaded_polyline_active = true;
                 self.gp0_shaded_polyline_have_last = false;
                 self.gp0_shaded_polyline_need_xy = true;
             },
             0x34, 0x36 => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_shaded_textured_tri_color = rgb24ToRgb555(value);
                 self.gp0_shaded_textured_tri_active = true;
                 self.gp0_shaded_textured_tri_index = 0;
                 return;
             },
             0x3C, 0x3E => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_shaded_textured_quad_color = rgb24ToRgb555(value);
                 self.gp0_shaded_textured_quad_active = true;
                 self.gp0_shaded_textured_quad_index = 0;
                 return;
             },
             0x2C, 0x2D, 0x2E, 0x2F => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_textured_quad_color = value;
                 self.gp0_textured_quad_active = true;
                 self.gp0_textured_quad_index = 0;
                 return;
             },
             0x24, 0x25, 0x26, 0x27 => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_textured_tri_active = true;
                 self.gp0_textured_tri_index = 0;
                 return;
             },
             0x60, 0x62, 0x6A => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_sprite_color = rgb24ToRgb555(value);
                 self.gp0_sprite_active = true;
                 self.gp0_sprite_index = 0;
             },
             0x64, 0x65, 0x66, 0x67 => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_textured_rect_color = rgb24ToRgb555(value);
                 self.gp0_textured_rect_raw_texture = gp0CommandRawTexture(cmd);
                 self.gp0_textured_rect_active = true;
                 self.gp0_textured_rect_index = 0;
             },
             0x68 => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_dot_color = rgb24ToRgb555(value);
                 self.gp0_dot_active = true;
             },
             0x70, 0x72 => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_fixed_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_rect_w = 8;
                 self.gp0_fixed_rect_h = 8;
                 self.gp0_fixed_rect_active = true;
             },
             0x74, 0x75, 0x76, 0x77 => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_textured_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_textured_rect_raw_texture = gp0CommandRawTexture(cmd);
                 self.gp0_fixed_textured_rect_w = 8;
@@ -1011,7 +1011,7 @@ pub const Gpu = struct {
                 self.gp0_fixed_textured_rect_index = 0;
             },
             0x78, 0x7A => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_fixed_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_rect_w = 16;
                 self.gp0_fixed_rect_h = 16;
@@ -1023,7 +1023,7 @@ pub const Gpu = struct {
                 self.gp0_vram_copy_index = 0;
             },
             0x7C, 0x7D, 0x7E, 0x7F => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_textured_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_textured_rect_raw_texture = gp0CommandRawTexture(cmd);
                 self.gp0_fixed_textured_rect_w = 16;
@@ -1032,7 +1032,7 @@ pub const Gpu = struct {
                 self.gp0_fixed_textured_rect_index = 0;
             },
             0x6C, 0x6D, 0x6E, 0x6F => {
-                self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
+                self.setGp0DrawSemiTransparentFromCommand(cmd);
                 self.gp0_textured_rect_color = rgb24ToRgb555(value);
                 self.gp0_fixed_textured_rect_raw_texture = gp0CommandRawTexture(cmd);
                 self.gp0_fixed_textured_rect_w = 1;
@@ -1539,6 +1539,10 @@ pub const Gpu = struct {
 
     fn rgb555B(color: u16) u32 {
         return (color >> 10) & 0x1F;
+    }
+
+    fn setGp0DrawSemiTransparentFromCommand(self: *Gpu, cmd: u8) void {
+        self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
     }
 
     fn gp0CommandRawTexture(cmd: u8) bool {
