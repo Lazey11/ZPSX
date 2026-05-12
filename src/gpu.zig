@@ -573,12 +573,9 @@ pub const Gpu = struct {
                 const xy2 = self.gp0_shaded_textured_tri_words[6];
                 const uv2 = self.gp0_shaded_textured_tri_words[7];
 
-                const x0 = xyX(xy0) + self.draw_offset_x;
-                const y0 = xyY(xy0) + self.draw_offset_y;
-                const x1 = xyX(xy1) + self.draw_offset_x;
-                const y1 = xyY(xy1) + self.draw_offset_y;
-                const x2 = xyX(xy2) + self.draw_offset_x;
-                const y2 = xyY(xy2) + self.draw_offset_y;
+                const p0 = self.offsetPoint(xy0);
+                const p1 = self.offsetPoint(xy1);
+                const p2 = self.offsetPoint(xy2);
 
                 const c0 = self.gp0_shaded_textured_tri_color;
                 const c1 = rgb24ToRgb555(self.gp0_shaded_textured_tri_words[2]);
@@ -586,16 +583,16 @@ pub const Gpu = struct {
                 const tpage = (uv1 >> 16) & 0xFFFF;
 
                 self.drawShadedTexturedTriangleWithTpage(
-                    x0,
-                    y0,
+                    p0.x,
+                    p0.y,
                     uv0,
                     c0,
-                    x1,
-                    y1,
+                    p1.x,
+                    p1.y,
                     uv1,
                     c1,
-                    x2,
-                    y2,
+                    p2.x,
+                    p2.y,
                     uv2,
                     c2,
                     tpage,
