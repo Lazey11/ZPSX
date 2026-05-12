@@ -781,13 +781,11 @@ pub const Gpu = struct {
                 const color1_word = self.gp0_shaded_line_words[1];
                 const xy1 = self.gp0_shaded_line_words[2];
 
-                const x0 = xyX(xy0) + self.draw_offset_x;
-                const y0 = xyY(xy0) + self.draw_offset_y;
-                const x1 = xyX(xy1) + self.draw_offset_x;
-                const y1 = xyY(xy1) + self.draw_offset_y;
+                const p0 = self.offsetPoint(xy0);
+                const p1 = self.offsetPoint(xy1);
                 const c1 = rgb24ToRgb555(color1_word);
 
-                self.drawShadedLine(x0, y0, self.gp0_shaded_line_color0, x1, y1, c1);
+                self.drawShadedLine(p0.x, p0.y, self.gp0_shaded_line_color0, p1.x, p1.y, c1);
 
                 self.gp0_shaded_line_active = false;
                 self.gp0_shaded_line_index = 0;
