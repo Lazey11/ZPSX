@@ -1408,6 +1408,36 @@ pub const Gpu = struct {
         };
     }
 
+    const TriangleTextureSetup = struct {
+        u0: u32,
+        v0: u32,
+        u1: u32,
+        v1: u32,
+        u2: u32,
+        v2: u32,
+        clx: u32,
+        cly: u32,
+        tex_base_x: u32,
+        tex_base_y: u32,
+        tex_mode: u32,
+    };
+
+    fn triangleTextureSetup(uv0_word: u32, uv1_word: u32, uv2_word: u32, tpage: u32) TriangleTextureSetup {
+        return .{
+            .u0 = uvU(uv0_word),
+            .v0 = uvV(uv0_word),
+            .u1 = uvU(uv1_word),
+            .v1 = uvV(uv1_word),
+            .u2 = uvU(uv2_word),
+            .v2 = uvV(uv2_word),
+            .clx = clutX(uv0_word),
+            .cly = clutY(uv0_word),
+            .tex_base_x = texturePageBaseX(tpage),
+            .tex_base_y = texturePageBaseY(tpage),
+            .tex_mode = textureMode(tpage),
+        };
+    }
+
     fn triangleEdges(x0: i32, y0: i32, x1: i32, y1: i32, x2: i32, y2: i32) ?TriangleEdges {
         const area = edgeFunction(x0, y0, x1, y1, x2, y2);
         if (area == 0) return null;
@@ -1617,19 +1647,7 @@ pub const Gpu = struct {
         const bounds = self.clippedTriangleBounds(x0, y0, x1, y1, x2, y2) orelse return;
         const edges = triangleEdges(x0, y0, x1, y1, x2, y2) orelse return;
 
-        const tex_u0 = uvU(uv0_word);
-        const tex_v0 = uvV(uv0_word);
-        const tex_u1 = uvU(uv1_word);
-        const tex_v1 = uvV(uv1_word);
-        const tex_u2 = uvU(uv2_word);
-        const tex_v2 = uvV(uv2_word);
-
-        const clx = clutX(uv0_word);
-        const cly = clutY(uv0_word);
-
-        const tex_base_x = texturePageBaseX(tpage);
-        const tex_base_y = texturePageBaseY(tpage);
-        const tex_mode = textureMode(tpage);
+        const tex = triangleTextureSetup(uv0_word, uv1_word, uv2_word, tpage);
 
         var y: i32 = bounds.min_y;
         while (y <= bounds.max_y) : (y += 1) {
@@ -1641,13 +1659,13 @@ pub const Gpu = struct {
                 const weights = triangleWeights(x0, y0, x1, y1, x2, y2, px2, py2, edges) orelse continue;
 
                 const tu: u32 = @intCast(
-                    (@as(u64, tex_u0) * weights.w0 + @as(u64, tex_u1) * weights.w1 + @as(u64, tex_u2) * weights.w2) / edges.area2_abs,
+                    (@as(u64, tex.u0) * weights.w0 + @as(u64, tex.u1) * weights.w1 + @as(u64, tex.u2) * weights.w2) / edges.area2_abs,
                 );
                 const tv: u32 = @intCast(
-                    (@as(u64, tex_v0) * weights.w0 + @as(u64, tex_v1) * weights.w1 + @as(u64, tex_v2) * weights.w2) / edges.area2_abs,
+                    (@as(u64, tex.v0) * weights.w0 + @as(u64, tex.v1) * weights.w1 + @as(u64, tex.v2) * weights.w2) / edges.area2_abs,
                 );
 
-                const px = self.sampleTextureMode(tex_mode, tex_base_x, tex_base_y, clx, cly, tu, tv);
+                const px = self.sampleTextureMode(tex.tex_mode, tex.tex_base_x, tex.tex_base_y, tex.clx, tex.cly, tu, tv);
                 if (px == 0) continue;
 
                 self.putPixel(x, y, px);
@@ -1674,19 +1692,7 @@ pub const Gpu = struct {
         const bounds = self.clippedTriangleBounds(x0, y0, x1, y1, x2, y2) orelse return;
         const edges = triangleEdges(x0, y0, x1, y1, x2, y2) orelse return;
 
-        const tex_u0 = uvU(uv0_word);
-        const tex_v0 = uvV(uv0_word);
-        const tex_u1 = uvU(uv1_word);
-        const tex_v1 = uvV(uv1_word);
-        const tex_u2 = uvU(uv2_word);
-        const tex_v2 = uvV(uv2_word);
-
-        const clx = clutX(uv0_word);
-        const cly = clutY(uv0_word);
-
-        const tex_base_x = texturePageBaseX(tpage);
-        const tex_base_y = texturePageBaseY(tpage);
-        const tex_mode = textureMode(tpage);
+        const tex = triangleTextureSetup(uv0_word, uv1_word, uv2_word, tpage);
 
         var y: i32 = bounds.min_y;
         while (y <= bounds.max_y) : (y += 1) {
@@ -1698,13 +1704,13 @@ pub const Gpu = struct {
                 const weights = triangleWeights(x0, y0, x1, y1, x2, y2, px2, py2, edges) orelse continue;
 
                 const tu: u32 = @intCast(
-                    (@as(u64, tex_u0) * weights.w0 + @as(u64, tex_u1) * weights.w1 + @as(u64, tex_u2) * weights.w2) / edges.area2_abs,
+                    (@as(u64, tex.u0) * weights.w0 + @as(u64, tex.u1) * weights.w1 + @as(u64, tex.u2) * weights.w2) / edges.area2_abs,
                 );
                 const tv: u32 = @intCast(
-                    (@as(u64, tex_v0) * weights.w0 + @as(u64, tex_v1) * weights.w1 + @as(u64, tex_v2) * weights.w2) / edges.area2_abs,
+                    (@as(u64, tex.v0) * weights.w0 + @as(u64, tex.v1) * weights.w1 + @as(u64, tex.v2) * weights.w2) / edges.area2_abs,
                 );
 
-                const tex_px = self.sampleTextureMode(tex_mode, tex_base_x, tex_base_y, clx, cly, tu, tv);
+                const tex_px = self.sampleTextureMode(tex.tex_mode, tex.tex_base_x, tex.tex_base_y, tex.clx, tex.cly, tu, tv);
                 if (tex_px == 0) continue;
 
                 const shade = mixRgb555(c0, c1, c2, weights.w0, weights.w1, weights.w2, edges.area2_abs);
