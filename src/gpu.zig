@@ -16,7 +16,6 @@ pub const Gpu = struct {
 
     gp0_mode: u8 = 0, // 0=command, 1=A0 pos, 2=A0 size, 3=A0 data, 4=C0 pos, 5=C0 size
     gp0_words_remaining: u32 = 0,
-    gp0_skip_words: u32 = 0,
     texture_window: u32 = 0,
     mask_set_on_draw: bool = false,
     mask_check_before_draw: bool = false,
@@ -859,11 +858,6 @@ pub const Gpu = struct {
 
             self.gp0_shaded_polyline_pending_color = rgb24ToRgb555(value);
             self.gp0_shaded_polyline_need_xy = true;
-            return;
-        }
-
-        if (self.gp0_skip_words > 0) {
-            self.gp0_skip_words -= 1;
             return;
         }
 
