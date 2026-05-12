@@ -337,28 +337,13 @@ pub const Gpu = struct {
     }
 
     fn drawTexturedRect(self: *Gpu, x: i32, y: i32, uv_word: u32, w: u32, h: u32, raw_texture: bool) void {
-        const tex_u0 = uvU(uv_word);
-        const tex_v0 = uvV(uv_word);
-        const clx = clutX(uv_word);
-        const cly = clutY(uv_word);
-
-        const tex_base_x = texturePageBaseX(self.draw_mode);
-        const tex_base_y = texturePageBaseY(self.draw_mode);
-        const tex_mode = textureMode(self.draw_mode);
+        const tex = rectTextureSetup(uv_word, self.draw_mode);
 
         var yy: u32 = 0;
         while (yy < h) : (yy += 1) {
             var xx: u32 = 0;
             while (xx < w) : (xx += 1) {
-                const px = self.sampleTextureMode(
-                    tex_mode,
-                    tex_base_x,
-                    tex_base_y,
-                    clx,
-                    cly,
-                    tex_u0 + xx,
-                    tex_v0 + yy,
-                );
+                const px = self.sampleRectTexture(tex, xx, yy);
                 if (px == 0) continue;
 
                 const out = if (raw_texture) px else modulateRgb555(px, self.gp0_textured_rect_color);
@@ -1443,6 +1428,45 @@ pub const Gpu = struct {
             (@as(u64, a0) * weights.w0 +
                 @as(u64, a1) * weights.w1 +
                 @as(u64, a2) * weights.w2) / area,
+        );
+    }
+
+    const RectTextureSetup = struct {
+        u0: u32,
+        v0: u32,
+        clx: u32,
+        cly: u32,
+        tex_base_x: u32,
+        tex_base_y: u32,
+        tex_mode: u32,
+    };
+
+    fn rectTextureSetup(uv_word: u32, draw_mode: u32) RectTextureSetup {
+        return .{
+            .u0 = uvU(uv_word),
+            .v0 = uvV(uv_word),
+            .clx = clutX(uv_word),
+            .cly = clutY(uv_word),
+            .tex_base_x = texturePageBaseX(draw_mode),
+            .tex_base_y = texturePageBaseY(draw_mode),
+            .tex_mode = textureMode(draw_mode),
+        };
+    }
+
+    fn sampleRectTexture(
+        self: *const Gpu,
+        tex: RectTextureSetup,
+        xx: u32,
+        yy: u32,
+    ) u16 {
+        return self.sampleTextureMode(
+            tex.tex_mode,
+            tex.tex_base_x,
+            tex.tex_base_y,
+            tex.clx,
+            tex.cly,
+            tex.u0 + xx,
+            tex.v0 + yy,
         );
     }
 
