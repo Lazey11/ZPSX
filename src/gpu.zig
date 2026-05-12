@@ -1437,24 +1437,13 @@ pub const Gpu = struct {
             .tex_mode = textureMode(tpage),
         };
     }
+
     fn triangleInterpolateU8(a0: u32, a1: u32, a2: u32, weights: TriangleWeights, area: u64) u32 {
         return @intCast(
             (@as(u64, a0) * weights.w0 +
                 @as(u64, a1) * weights.w1 +
                 @as(u64, a2) * weights.w2) / area,
         );
-    }
-
-    const TriangleTexCoord = struct {
-        u: u32,
-        v: u32,
-    };
-
-    fn triangleTexCoord(tex: TriangleTextureSetup, weights: TriangleWeights, area: u64) TriangleTexCoord {
-        return .{
-            .u = triangleInterpolateU8(tex.u0, tex.u1, tex.u2, weights, area),
-            .v = triangleInterpolateU8(tex.v0, tex.v1, tex.v2, weights, area),
-        };
     }
 
     fn triangleEdges(x0: i32, y0: i32, x1: i32, y1: i32, x2: i32, y2: i32) ?TriangleEdges {
@@ -1677,9 +1666,7 @@ pub const Gpu = struct {
 
                 const weights = triangleWeights(x0, y0, x1, y1, x2, y2, px2, py2, edges) orelse continue;
 
-                const tc = triangleTexCoord(tex, weights, edges.area2_abs);
-
-                const tex_px = self.sampleTextureMode(tex.tex_mode, tex.tex_base_x, tex.tex_base_y, tex.clx, tex.cly, tc.u, tc.v);
+                const tex_px = self.sampleTriangleTexture(tex, weights, edges.area2_abs);
                 if (tex_px == 0) continue;
 
                 self.putPixel(x, y, tex_px);
@@ -1717,9 +1704,7 @@ pub const Gpu = struct {
 
                 const weights = triangleWeights(x0, y0, x1, y1, x2, y2, px2, py2, edges) orelse continue;
 
-                const tc = triangleTexCoord(tex, weights, edges.area2_abs);
-
-                const tex_px = self.sampleTextureMode(tex.tex_mode, tex.tex_base_x, tex.tex_base_y, tex.clx, tex.cly, tc.u, tc.v);
+                const tex_px = self.sampleTriangleTexture(tex, weights, edges.area2_abs);
                 if (tex_px == 0) continue;
 
                 const shade = mixRgb555(c0, c1, c2, weights.w0, weights.w1, weights.w2, edges.area2_abs);
@@ -1742,6 +1727,26 @@ pub const Gpu = struct {
     ) void {
         const tpage = (uv1_word >> 16) & 0xFFFF;
         self.drawTexturedTriangleWithTpage(x0, y0, uv0_word, x1, y1, uv1_word, x2, y2, uv2_word, tpage);
+    }
+
+    fn sampleTriangleTexture(
+        self: *const Gpu,
+        tex: TriangleTextureSetup,
+        weights: TriangleWeights,
+        area: u64,
+    ) u16 {
+        const tu = triangleInterpolateU8(tex.u0, tex.u1, tex.u2, weights, area);
+        const tv = triangleInterpolateU8(tex.v0, tex.v1, tex.v2, weights, area);
+
+        return self.sampleTextureMode(
+            tex.tex_mode,
+            tex.tex_base_x,
+            tex.tex_base_y,
+            tex.clx,
+            tex.cly,
+            tu,
+            tv,
+        );
     }
 
     fn drawFilledQuadBBox(self: *Gpu) void {
