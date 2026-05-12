@@ -1030,10 +1030,8 @@ pub const Gpu = struct {
             },
             0x6C, 0x6D, 0x6E, 0x6F => {
                 self.gp0_draw_semi_transparent = gp0CommandSemiTransparent(cmd);
-                self.gp0_fixed_textured_rect_w = 1;
-                self.gp0_fixed_textured_rect_h = 1;
-                self.gp0_fixed_textured_rect_active = true;
-                self.gp0_fixed_textured_rect_index = 0;
+                self.gp0_textured_rect_active = true;
+                self.gp0_textured_rect_index = 0;
             },
 
             0xE1 => {
