@@ -1354,12 +1354,37 @@ pub const Gpu = struct {
     fn edgeInside(value: i64, top_left: bool) bool {
         return value > 0 or (value == 0 and top_left);
     }
+
     const TriangleBounds = struct {
         min_x: i32,
         max_x: i32,
         min_y: i32,
         max_y: i32,
     };
+
+    const TriangleEdges = struct {
+        flip: bool,
+        area2_abs: u64,
+        e0_tl: bool,
+        e1_tl: bool,
+        e2_tl: bool,
+    };
+
+    fn triangleEdges(x0: i32, y0: i32, x1: i32, y1: i32, x2: i32, y2: i32) ?TriangleEdges {
+        const area = edgeFunction(x0, y0, x1, y1, x2, y2);
+        if (area == 0) return null;
+
+        const area_abs: u64 = @intCast(if (area > 0) area else -area);
+
+        return .{
+            .flip = area < 0,
+            .area2_abs = area_abs * 2,
+            .e0_tl = isTopLeftEdge(x1, y1, x2, y2),
+            .e1_tl = isTopLeftEdge(x2, y2, x0, y0),
+            .e2_tl = isTopLeftEdge(x0, y0, x1, y1),
+        };
+    }
+
     fn clippedTriangleBounds(
         self: *const Gpu,
         x0: i32,
@@ -1408,14 +1433,7 @@ pub const Gpu = struct {
 
     fn drawFilledTriangle(self: *Gpu, x0: i32, y0: i32, x1: i32, y1: i32, x2: i32, y2: i32, color: u16) void {
         const bounds = self.clippedTriangleBounds(x0, y0, x1, y1, x2, y2) orelse return;
-        const area = edgeFunction(x0, y0, x1, y1, x2, y2);
-        if (area == 0) return;
-
-        const flip = area < 0;
-
-        const e0_tl = isTopLeftEdge(x1, y1, x2, y2);
-        const e1_tl = isTopLeftEdge(x2, y2, x0, y0);
-        const e2_tl = isTopLeftEdge(x0, y0, x1, y1);
+        const edges = triangleEdges(x0, y0, x1, y1, x2, y2) orelse return;
 
         var y: i32 = bounds.min_y;
         while (y <= bounds.max_y) : (y += 1) {
@@ -1428,13 +1446,13 @@ pub const Gpu = struct {
                 var w1 = edgeFunction2(x2, y2, x0, y0, px2, py2);
                 var w2 = edgeFunction2(x0, y0, x1, y1, px2, py2);
 
-                if (flip) {
+                if (edges.flip) {
                     w0 = -w0;
                     w1 = -w1;
                     w2 = -w2;
                 }
 
-                if (edgeInside(w0, e0_tl) and edgeInside(w1, e1_tl) and edgeInside(w2, e2_tl)) {
+                if (edgeInside(w0, edges.e0_tl) and edgeInside(w1, edges.e1_tl) and edgeInside(w2, edges.e2_tl)) {
                     self.putPixel(x, y, color);
                 }
             }
@@ -1536,17 +1554,7 @@ pub const Gpu = struct {
         c2: u16,
     ) void {
         const bounds = self.clippedTriangleBounds(x0, y0, x1, y1, x2, y2) orelse return;
-        const area = edgeFunction(x0, y0, x1, y1, x2, y2);
-        if (area == 0) return;
-
-        const flip = area < 0;
-        const area_abs: u64 = @intCast(if (area > 0) area else -area);
-        const area2_abs = area_abs * 2;
-
-        const e0_tl = isTopLeftEdge(x1, y1, x2, y2);
-        const e1_tl = isTopLeftEdge(x2, y2, x0, y0);
-        const e2_tl = isTopLeftEdge(x0, y0, x1, y1);
-
+        const edges = triangleEdges(x0, y0, x1, y1, x2, y2) orelse return;
         var y: i32 = bounds.min_y;
         while (y <= bounds.max_y) : (y += 1) {
             var x: i32 = bounds.min_x;
@@ -1558,18 +1566,18 @@ pub const Gpu = struct {
                 var ew1 = edgeFunction2(x2, y2, x0, y0, px2, py2);
                 var ew2 = edgeFunction2(x0, y0, x1, y1, px2, py2);
 
-                if (flip) {
+                if (edges.flip) {
                     ew0 = -ew0;
                     ew1 = -ew1;
                     ew2 = -ew2;
                 }
 
-                if (edgeInside(ew0, e0_tl) and edgeInside(ew1, e1_tl) and edgeInside(ew2, e2_tl)) {
+                if (edgeInside(ew0, edges.e0_tl) and edgeInside(ew1, edges.e1_tl) and edgeInside(ew2, edges.e2_tl)) {
                     const w0: u64 = @intCast(ew0);
                     const w1: u64 = @intCast(ew1);
                     const w2: u64 = @intCast(ew2);
 
-                    self.putPixel(x, y, mixRgb555(c0, c1, c2, w0, w1, w2, area2_abs));
+                    self.putPixel(x, y, mixRgb555(c0, c1, c2, w0, w1, w2, edges.area2_abs));
                 }
             }
         }
@@ -1589,12 +1597,7 @@ pub const Gpu = struct {
         tpage: u32,
     ) void {
         const bounds = self.clippedTriangleBounds(x0, y0, x1, y1, x2, y2) orelse return;
-        const area = edgeFunction(x0, y0, x1, y1, x2, y2);
-        if (area == 0) return;
-
-        const flip = area < 0;
-        const area_abs: u64 = @intCast(if (area > 0) area else -area);
-        const area2_abs = area_abs * 2;
+        const edges = triangleEdges(x0, y0, x1, y1, x2, y2) orelse return;
 
         const tex_u0 = uvU(uv0_word);
         const tex_v0 = uvV(uv0_word);
@@ -1610,10 +1613,6 @@ pub const Gpu = struct {
         const tex_base_y = texturePageBaseY(tpage);
         const tex_mode = textureMode(tpage);
 
-        const e0_tl = isTopLeftEdge(x1, y1, x2, y2);
-        const e1_tl = isTopLeftEdge(x2, y2, x0, y0);
-        const e2_tl = isTopLeftEdge(x0, y0, x1, y1);
-
         var y: i32 = bounds.min_y;
         while (y <= bounds.max_y) : (y += 1) {
             var x: i32 = bounds.min_x;
@@ -1625,22 +1624,22 @@ pub const Gpu = struct {
                 var ew1 = edgeFunction2(x2, y2, x0, y0, px2, py2);
                 var ew2 = edgeFunction2(x0, y0, x1, y1, px2, py2);
 
-                if (flip) {
+                if (edges.flip) {
                     ew0 = -ew0;
                     ew1 = -ew1;
                     ew2 = -ew2;
                 }
 
-                if (edgeInside(ew0, e0_tl) and edgeInside(ew1, e1_tl) and edgeInside(ew2, e2_tl)) {
+                if (edgeInside(ew0, edges.e0_tl) and edgeInside(ew1, edges.e1_tl) and edgeInside(ew2, edges.e2_tl)) {
                     const w0: u64 = @intCast(ew0);
                     const w1: u64 = @intCast(ew1);
                     const w2: u64 = @intCast(ew2);
 
                     const tu: u32 = @intCast(
-                        (@as(u64, tex_u0) * w0 + @as(u64, tex_u1) * w1 + @as(u64, tex_u2) * w2) / area2_abs,
+                        (@as(u64, tex_u0) * w0 + @as(u64, tex_u1) * w1 + @as(u64, tex_u2) * w2) / edges.area2_abs,
                     );
                     const tv: u32 = @intCast(
-                        (@as(u64, tex_v0) * w0 + @as(u64, tex_v1) * w1 + @as(u64, tex_v2) * w2) / area2_abs,
+                        (@as(u64, tex_v0) * w0 + @as(u64, tex_v1) * w1 + @as(u64, tex_v2) * w2) / edges.area2_abs,
                     );
 
                     const px = self.sampleTextureMode(tex_mode, tex_base_x, tex_base_y, clx, cly, tu, tv);
@@ -1651,6 +1650,7 @@ pub const Gpu = struct {
             }
         }
     }
+
     fn drawShadedTexturedTriangleWithTpage(
         self: *Gpu,
         x0: i32,
@@ -1668,13 +1668,7 @@ pub const Gpu = struct {
         tpage: u32,
     ) void {
         const bounds = self.clippedTriangleBounds(x0, y0, x1, y1, x2, y2) orelse return;
-
-        const area = edgeFunction(x0, y0, x1, y1, x2, y2);
-        if (area == 0) return;
-
-        const flip = area < 0;
-        const area_abs: u64 = @intCast(if (area > 0) area else -area);
-        const area2_abs = area_abs * 2;
+        const edges = triangleEdges(x0, y0, x1, y1, x2, y2) orelse return;
 
         const tex_u0 = uvU(uv0_word);
         const tex_v0 = uvV(uv0_word);
@@ -1689,10 +1683,6 @@ pub const Gpu = struct {
         const tex_base_x = texturePageBaseX(tpage);
         const tex_base_y = texturePageBaseY(tpage);
         const tex_mode = textureMode(tpage);
-
-        const e0_tl = isTopLeftEdge(x1, y1, x2, y2);
-        const e1_tl = isTopLeftEdge(x2, y2, x0, y0);
-        const e2_tl = isTopLeftEdge(x0, y0, x1, y1);
         var y: i32 = bounds.min_y;
         while (y <= bounds.max_y) : (y += 1) {
             var x: i32 = bounds.min_x;
@@ -1704,28 +1694,28 @@ pub const Gpu = struct {
                 var ew1 = edgeFunction2(x2, y2, x0, y0, px2, py2);
                 var ew2 = edgeFunction2(x0, y0, x1, y1, px2, py2);
 
-                if (flip) {
+                if (edges.flip) {
                     ew0 = -ew0;
                     ew1 = -ew1;
                     ew2 = -ew2;
                 }
 
-                if (edgeInside(ew0, e0_tl) and edgeInside(ew1, e1_tl) and edgeInside(ew2, e2_tl)) {
+                if (edgeInside(ew0, edges.e0_tl) and edgeInside(ew1, edges.e1_tl) and edgeInside(ew2, edges.e2_tl)) {
                     const w0: u64 = @intCast(ew0);
                     const w1: u64 = @intCast(ew1);
                     const w2: u64 = @intCast(ew2);
 
                     const tu: u32 = @intCast(
-                        (@as(u64, tex_u0) * w0 + @as(u64, tex_u1) * w1 + @as(u64, tex_u2) * w2) / area2_abs,
+                        (@as(u64, tex_u0) * w0 + @as(u64, tex_u1) * w1 + @as(u64, tex_u2) * w2) / edges.area2_abs,
                     );
                     const tv: u32 = @intCast(
-                        (@as(u64, tex_v0) * w0 + @as(u64, tex_v1) * w1 + @as(u64, tex_v2) * w2) / area2_abs,
+                        (@as(u64, tex_v0) * w0 + @as(u64, tex_v1) * w1 + @as(u64, tex_v2) * w2) / edges.area2_abs,
                     );
 
                     const tex_px = self.sampleTextureMode(tex_mode, tex_base_x, tex_base_y, clx, cly, tu, tv);
                     if (tex_px == 0) continue;
 
-                    const shade = mixRgb555(c0, c1, c2, w0, w1, w2, area2_abs);
+                    const shade = mixRgb555(c0, c1, c2, w0, w1, w2, edges.area2_abs);
                     self.putPixel(x, y, modulateRgb555(tex_px, shade));
                 }
             }
