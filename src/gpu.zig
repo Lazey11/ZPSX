@@ -358,9 +358,8 @@ pub const Gpu = struct {
         self.gp0_last = value;
 
         if (self.gp0_dot_active) {
-            const x = xyX(value) + self.draw_offset_x;
-            const y = xyY(value) + self.draw_offset_y;
-            self.putPixel(x, y, self.gp0_dot_color);
+            const p = self.offsetPoint(value);
+            self.putPixel(p.x, p.y, self.gp0_dot_color);
             self.gp0_dot_active = false;
             return;
         }
@@ -700,14 +699,11 @@ pub const Gpu = struct {
             self.gp0_tri_vertex_index += 1;
 
             if (self.gp0_tri_vertex_index == 3) {
-                const x0 = vertexX(self.gp0_tri_vertices[0]) + self.draw_offset_x;
-                const y0 = vertexY(self.gp0_tri_vertices[0]) + self.draw_offset_y;
-                const x1 = vertexX(self.gp0_tri_vertices[1]) + self.draw_offset_x;
-                const y1 = vertexY(self.gp0_tri_vertices[1]) + self.draw_offset_y;
-                const x2 = vertexX(self.gp0_tri_vertices[2]) + self.draw_offset_x;
-                const y2 = vertexY(self.gp0_tri_vertices[2]) + self.draw_offset_y;
+                const p0 = self.offsetPoint(self.gp0_tri_vertices[0]);
+                const p1 = self.offsetPoint(self.gp0_tri_vertices[1]);
+                const p2 = self.offsetPoint(self.gp0_tri_vertices[2]);
 
-                self.drawFilledTriangle(x0, y0, x1, y1, x2, y2, self.gp0_tri_color);
+                self.drawFilledTriangle(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, self.gp0_tri_color);
 
                 self.gp0_tri_active = false;
                 self.gp0_tri_vertex_index = 0;
@@ -1313,18 +1309,6 @@ pub const Gpu = struct {
         const g5 = g8 >> 3;
         const b5 = b8 >> 3;
         return r5 | (g5 << 5) | (b5 << 10);
-    }
-
-    fn vertexX(v: u32) i32 {
-        const raw: u16 = @intCast(v & 0xFFFF);
-        const signed: i16 = @bitCast(raw);
-        return @as(i32, signed);
-    }
-
-    fn vertexY(v: u32) i32 {
-        const raw: u16 = @intCast((v >> 16) & 0xFFFF);
-        const signed: i16 = @bitCast(raw);
-        return @as(i32, signed);
     }
 
     fn edgeFunction(ax: i32, ay: i32, bx: i32, by: i32, px: i32, py: i32) i64 {
