@@ -1354,8 +1354,21 @@ pub const Gpu = struct {
     fn edgeInside(value: i64, top_left: bool) bool {
         return value > 0 or (value == 0 and top_left);
     }
-
-    fn drawFilledTriangle(self: *Gpu, x0: i32, y0: i32, x1: i32, y1: i32, x2: i32, y2: i32, color: u16) void {
+    const TriangleBounds = struct {
+        min_x: i32,
+        max_x: i32,
+        min_y: i32,
+        max_y: i32,
+    };
+    fn clippedTriangleBounds(
+        self: *const Gpu,
+        x0: i32,
+        y0: i32,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+    ) ?TriangleBounds {
         var min_x = x0;
         var max_x = x0;
         var min_y = y0;
@@ -1371,7 +1384,7 @@ pub const Gpu = struct {
         if (y2 < min_y) min_y = y2;
         if (y2 > max_y) max_y = y2;
 
-        if (max_x < 0 or max_y < 0 or min_x >= 1024 or min_y >= 512) return;
+        if (max_x < 0 or max_y < 0 or min_x >= 1024 or min_y >= 512) return null;
 
         if (min_x < 0) min_x = 0;
         if (min_y < 0) min_y = 0;
@@ -1383,8 +1396,18 @@ pub const Gpu = struct {
         if (max_x > self.draw_area_right) max_x = self.draw_area_right;
         if (max_y > self.draw_area_bottom) max_y = self.draw_area_bottom;
 
-        if (max_x < min_x or max_y < min_y) return;
+        if (max_x < min_x or max_y < min_y) return null;
 
+        return .{
+            .min_x = min_x,
+            .max_x = max_x,
+            .min_y = min_y,
+            .max_y = max_y,
+        };
+    }
+
+    fn drawFilledTriangle(self: *Gpu, x0: i32, y0: i32, x1: i32, y1: i32, x2: i32, y2: i32, color: u16) void {
+        const bounds = self.clippedTriangleBounds(x0, y0, x1, y1, x2, y2) orelse return;
         const area = edgeFunction(x0, y0, x1, y1, x2, y2);
         if (area == 0) return;
 
@@ -1394,10 +1417,10 @@ pub const Gpu = struct {
         const e1_tl = isTopLeftEdge(x2, y2, x0, y0);
         const e2_tl = isTopLeftEdge(x0, y0, x1, y1);
 
-        var y: i32 = min_y;
-        while (y <= max_y) : (y += 1) {
-            var x: i32 = min_x;
-            while (x <= max_x) : (x += 1) {
+        var y: i32 = bounds.min_y;
+        while (y <= bounds.max_y) : (y += 1) {
+            var x: i32 = bounds.min_x;
+            while (x <= bounds.max_x) : (x += 1) {
                 const px2 = x * 2 + 1;
                 const py2 = y * 2 + 1;
 
@@ -1512,35 +1535,7 @@ pub const Gpu = struct {
         y2: i32,
         c2: u16,
     ) void {
-        var min_x = x0;
-        var max_x = x0;
-        var min_y = y0;
-        var max_y = y0;
-
-        if (x1 < min_x) min_x = x1;
-        if (x1 > max_x) max_x = x1;
-        if (y1 < min_y) min_y = y1;
-        if (y1 > max_y) max_y = y1;
-
-        if (x2 < min_x) min_x = x2;
-        if (x2 > max_x) max_x = x2;
-        if (y2 < min_y) min_y = y2;
-        if (y2 > max_y) max_y = y2;
-
-        if (max_x < 0 or max_y < 0 or min_x >= 1024 or min_y >= 512) return;
-
-        if (min_x < 0) min_x = 0;
-        if (min_y < 0) min_y = 0;
-        if (max_x > 1023) max_x = 1023;
-        if (max_y > 511) max_y = 511;
-
-        if (min_x < self.draw_area_left) min_x = self.draw_area_left;
-        if (min_y < self.draw_area_top) min_y = self.draw_area_top;
-        if (max_x > self.draw_area_right) max_x = self.draw_area_right;
-        if (max_y > self.draw_area_bottom) max_y = self.draw_area_bottom;
-
-        if (max_x < min_x or max_y < min_y) return;
-
+        const bounds = self.clippedTriangleBounds(x0, y0, x1, y1, x2, y2) orelse return;
         const area = edgeFunction(x0, y0, x1, y1, x2, y2);
         if (area == 0) return;
 
@@ -1552,10 +1547,10 @@ pub const Gpu = struct {
         const e1_tl = isTopLeftEdge(x2, y2, x0, y0);
         const e2_tl = isTopLeftEdge(x0, y0, x1, y1);
 
-        var y: i32 = min_y;
-        while (y <= max_y) : (y += 1) {
-            var x: i32 = min_x;
-            while (x <= max_x) : (x += 1) {
+        var y: i32 = bounds.min_y;
+        while (y <= bounds.max_y) : (y += 1) {
+            var x: i32 = bounds.min_x;
+            while (x <= bounds.max_x) : (x += 1) {
                 const px2 = x * 2 + 1;
                 const py2 = y * 2 + 1;
 
@@ -1593,35 +1588,7 @@ pub const Gpu = struct {
         uv2_word: u32,
         tpage: u32,
     ) void {
-        var min_x = x0;
-        var max_x = x0;
-        var min_y = y0;
-        var max_y = y0;
-
-        if (x1 < min_x) min_x = x1;
-        if (x1 > max_x) max_x = x1;
-        if (y1 < min_y) min_y = y1;
-        if (y1 > max_y) max_y = y1;
-
-        if (x2 < min_x) min_x = x2;
-        if (x2 > max_x) max_x = x2;
-        if (y2 < min_y) min_y = y2;
-        if (y2 > max_y) max_y = y2;
-
-        if (max_x < 0 or max_y < 0 or min_x >= 1024 or min_y >= 512) return;
-
-        if (min_x < 0) min_x = 0;
-        if (min_y < 0) min_y = 0;
-        if (max_x > 1023) max_x = 1023;
-        if (max_y > 511) max_y = 511;
-
-        if (min_x < self.draw_area_left) min_x = self.draw_area_left;
-        if (min_y < self.draw_area_top) min_y = self.draw_area_top;
-        if (max_x > self.draw_area_right) max_x = self.draw_area_right;
-        if (max_y > self.draw_area_bottom) max_y = self.draw_area_bottom;
-
-        if (max_x < min_x or max_y < min_y) return;
-
+        const bounds = self.clippedTriangleBounds(x0, y0, x1, y1, x2, y2) orelse return;
         const area = edgeFunction(x0, y0, x1, y1, x2, y2);
         if (area == 0) return;
 
@@ -1647,10 +1614,10 @@ pub const Gpu = struct {
         const e1_tl = isTopLeftEdge(x2, y2, x0, y0);
         const e2_tl = isTopLeftEdge(x0, y0, x1, y1);
 
-        var y: i32 = min_y;
-        while (y <= max_y) : (y += 1) {
-            var x: i32 = min_x;
-            while (x <= max_x) : (x += 1) {
+        var y: i32 = bounds.min_y;
+        while (y <= bounds.max_y) : (y += 1) {
+            var x: i32 = bounds.min_x;
+            while (x <= bounds.max_x) : (x += 1) {
                 const px2 = x * 2 + 1;
                 const py2 = y * 2 + 1;
 
@@ -1700,34 +1667,7 @@ pub const Gpu = struct {
         c2: u16,
         tpage: u32,
     ) void {
-        var min_x = x0;
-        var max_x = x0;
-        var min_y = y0;
-        var max_y = y0;
-
-        if (x1 < min_x) min_x = x1;
-        if (x1 > max_x) max_x = x1;
-        if (y1 < min_y) min_y = y1;
-        if (y1 > max_y) max_y = y1;
-
-        if (x2 < min_x) min_x = x2;
-        if (x2 > max_x) max_x = x2;
-        if (y2 < min_y) min_y = y2;
-        if (y2 > max_y) max_y = y2;
-
-        if (max_x < 0 or max_y < 0 or min_x >= 1024 or min_y >= 512) return;
-
-        if (min_x < 0) min_x = 0;
-        if (min_y < 0) min_y = 0;
-        if (max_x > 1023) max_x = 1023;
-        if (max_y > 511) max_y = 511;
-
-        if (min_x < self.draw_area_left) min_x = self.draw_area_left;
-        if (min_y < self.draw_area_top) min_y = self.draw_area_top;
-        if (max_x > self.draw_area_right) max_x = self.draw_area_right;
-        if (max_y > self.draw_area_bottom) max_y = self.draw_area_bottom;
-
-        if (max_x < min_x or max_y < min_y) return;
+        const bounds = self.clippedTriangleBounds(x0, y0, x1, y1, x2, y2) orelse return;
 
         const area = edgeFunction(x0, y0, x1, y1, x2, y2);
         if (area == 0) return;
@@ -1753,11 +1693,10 @@ pub const Gpu = struct {
         const e0_tl = isTopLeftEdge(x1, y1, x2, y2);
         const e1_tl = isTopLeftEdge(x2, y2, x0, y0);
         const e2_tl = isTopLeftEdge(x0, y0, x1, y1);
-
-        var y: i32 = min_y;
-        while (y <= max_y) : (y += 1) {
-            var x: i32 = min_x;
-            while (x <= max_x) : (x += 1) {
+        var y: i32 = bounds.min_y;
+        while (y <= bounds.max_y) : (y += 1) {
+            var x: i32 = bounds.min_x;
+            while (x <= bounds.max_x) : (x += 1) {
                 const px2 = x * 2 + 1;
                 const py2 = y * 2 + 1;
 
