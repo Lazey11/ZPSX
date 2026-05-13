@@ -27,6 +27,11 @@ fn parseFrames(args: []const []const u8) !?u64 {
     }
     return null;
 }
+
+fn parseGpuCrc(args: []const []const u8) bool {
+    return hasArg(args, "--gpu-crc");
+}
+
 fn programPath(args: []const []const u8) ?[]const u8 {
     var i: usize = 2;
     while (i < args.len) : (i += 1) {
@@ -50,12 +55,13 @@ pub fn main(init: std.process.Init) !void {
 
     const args = try init.minimal.args.toSlice(allocator);
     if (args.len < 2) {
-        std.debug.print("usage: ZPSX <bios.bin> [program.exe] [--headless] [--frames N]\n", .{});
+        std.debug.print("usage: ZPSX <bios.bin> [program.exe] [--headless] [--frames N] [--gpu-crc]\n", .{});
         return;
     }
 
     const headless = hasArg(args, "--headless");
     const frame_limit = try parseFrames(args);
+    const print_gpu_crc = parseGpuCrc(args);
     const program_path = programPath(args);
     var sdl = display.SDL{};
     var config: display.displayConfig = undefined;
@@ -149,5 +155,8 @@ pub fn main(init: std.process.Init) !void {
                 fps_last_instruction_count = cpu.instruction_count;
             }
         }
+    }
+    if (print_gpu_crc) {
+        std.debug.print("GPU VRAM CRC32: 0x{X:0>8}\n", .{bus.gpu.vramCrc32()});
     }
 }
