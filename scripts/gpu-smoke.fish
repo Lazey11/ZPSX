@@ -13,7 +13,12 @@ set tests \
     "/home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/15BPP/RenderTexturePolygon15BPP.exe 0xBE1231BC" \
     "/home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/CLUT4BPP/RenderTexturePolygonCLUT4BPP.exe 0x9C16E5CB" \
     "/home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/CLUT8BPP/RenderTexturePolygonCLUT8BPP.exe 0xE1E777F7" \
-    "/home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/MASK15BPP/RenderTexturePolygonMASK15BPP.exe 0x2CA9926F"
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/MASK15BPP/RenderTexturePolygonMASK15BPP.exe 0x2CA9926F" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygonClip/15BPP/RenderTexturePolygonClip15BPP.exe 0xB165E8F2" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygonClip/CLUT4BPP/RenderTexturePolygonClipCLUT4BPP.exe 0x782A31FD" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygonClip/CLUT8BPP/RenderTexturePolygonClipCLUT8BPP.exe 0x05DBA3C1" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygonClip/MASK15BPP/RenderTexturePolygonClipMASK15BPP.exe 0x2EDC9E6B" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygonDither/RenderTexturePolygon15BPPDither.exe 0x9F138BA1"
 
 zig build -Doptimize=ReleaseFast; or exit 1
 
