@@ -931,10 +931,7 @@ pub const Gpu = struct {
                 self.startPolyline(cmd, value);
             },
             0x50, 0x52 => {
-                self.setGp0DrawSemiTransparentFromCommand(cmd);
-                self.gp0_shaded_line_color0 = rgb24ToRgb555(value);
-                self.gp0_shaded_line_active = true;
-                self.gp0_shaded_line_index = 0;
+                self.startShadedLine(cmd, value);
             },
             0x58, 0x5A => {
                 self.setGp0DrawSemiTransparentFromCommand(cmd);
@@ -1555,6 +1552,13 @@ pub const Gpu = struct {
         self.gp0_polyline_color = rgb24ToRgb555(value);
         self.gp0_polyline_active = true;
         self.gp0_polyline_have_last = false;
+    }
+
+    fn startShadedLine(self: *Gpu, cmd: u8, value: u32) void {
+        self.setGp0DrawSemiTransparentFromCommand(cmd);
+        self.gp0_shaded_line_color0 = rgb24ToRgb555(value);
+        self.gp0_shaded_line_active = true;
+        self.gp0_shaded_line_index = 0;
     }
 
     fn gp0CommandRawTexture(cmd: u8) bool {
