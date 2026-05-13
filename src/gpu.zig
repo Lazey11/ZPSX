@@ -389,7 +389,7 @@ pub const Gpu = struct {
                 self.gp0_fixed_rect_h,
                 self.gp0_fixed_rect_color,
             );
-            self.gp0_fixed_rect_active = false;
+            self.finishFixedFilledRect();
             return;
         }
 
@@ -618,8 +618,7 @@ pub const Gpu = struct {
 
                 self.drawTexturedTriangle(p0.x, p0.y, uv0, p1.x, p1.y, uv1, p2.x, p2.y, uv2);
 
-                self.gp0_textured_tri_active = false;
-                self.gp0_textured_tri_index = 0;
+                self.finishTexturedTri();
             }
 
             return;
@@ -631,8 +630,7 @@ pub const Gpu = struct {
 
             if (self.gp0_textured_quad_index == 8) {
                 self.drawTexturedQuad2C();
-                self.gp0_textured_quad_active = false;
-                self.gp0_textured_quad_index = 0;
+                self.finishTexturedQuad();
             }
 
             return;
@@ -644,8 +642,7 @@ pub const Gpu = struct {
 
             if (self.gp0_quad_vertex_index == 4) {
                 self.drawFilledQuadBBox();
-                self.gp0_quad_active = false;
-                self.gp0_quad_vertex_index = 0;
+                self.finishFilledQuad();
             }
 
             return;
@@ -669,8 +666,7 @@ pub const Gpu = struct {
                 const c2 = rgb24ToRgb555(self.gp0_shaded_tri_words[3]);
 
                 self.drawGouraudTriangle(p0.x, p0.y, c0, p1.x, p1.y, c1, p2.x, p2.y, c2);
-                self.gp0_shaded_tri_active = false;
-                self.gp0_shaded_tri_index = 0;
+                self.finishShadedTri();
             }
 
             return;
@@ -687,8 +683,7 @@ pub const Gpu = struct {
 
                 self.drawFilledTriangle(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, self.gp0_tri_color);
 
-                self.gp0_tri_active = false;
-                self.gp0_tri_vertex_index = 0;
+                self.finishFilledTri();
             }
 
             return;
@@ -717,8 +712,7 @@ pub const Gpu = struct {
                 self.drawGouraudTriangle(p0.x, p0.y, c0, p1.x, p1.y, c1, p2.x, p2.y, c2);
                 self.drawGouraudTriangle(p1.x, p1.y, c1, p2.x, p2.y, c2, p3.x, p3.y, c3);
 
-                self.gp0_shaded_quad_active = false;
-                self.gp0_shaded_quad_index = 0;
+                self.finishShadedQuad();
             }
 
             return;
@@ -737,8 +731,7 @@ pub const Gpu = struct {
 
                 self.drawLine(p0.x, p0.y, p1.x, p1.y, self.gp0_line_color);
 
-                self.gp0_line_active = false;
-                self.gp0_line_index = 0;
+                self.finishLine();
             }
 
             return;
@@ -783,8 +776,7 @@ pub const Gpu = struct {
 
                 self.drawShadedLine(p0.x, p0.y, self.gp0_shaded_line_color0, p1.x, p1.y, c1);
 
-                self.gp0_shaded_line_active = false;
-                self.gp0_shaded_line_index = 0;
+                self.finishShadedLine();
             }
 
             return;
@@ -1619,6 +1611,50 @@ pub const Gpu = struct {
     fn finishTexturedRect(self: *Gpu) void {
         self.gp0_textured_rect_active = false;
         self.gp0_textured_rect_index = 0;
+    }
+
+    fn finishFixedFilledRect(self: *Gpu) void {
+        self.gp0_fixed_rect_active = false;
+    }
+
+    fn finishTexturedTri(self: *Gpu) void {
+        self.gp0_textured_tri_active = false;
+        self.gp0_textured_tri_index = 0;
+    }
+
+    fn finishTexturedQuad(self: *Gpu) void {
+        self.gp0_textured_quad_active = false;
+        self.gp0_textured_quad_index = 0;
+    }
+
+    fn finishFilledTri(self: *Gpu) void {
+        self.gp0_tri_active = false;
+        self.gp0_tri_vertex_index = 0;
+    }
+
+    fn finishFilledQuad(self: *Gpu) void {
+        self.gp0_quad_active = false;
+        self.gp0_quad_vertex_index = 0;
+    }
+
+    fn finishShadedTri(self: *Gpu) void {
+        self.gp0_shaded_tri_active = false;
+        self.gp0_shaded_tri_index = 0;
+    }
+
+    fn finishShadedQuad(self: *Gpu) void {
+        self.gp0_shaded_quad_active = false;
+        self.gp0_shaded_quad_index = 0;
+    }
+
+    fn finishLine(self: *Gpu) void {
+        self.gp0_line_active = false;
+        self.gp0_line_index = 0;
+    }
+
+    fn finishShadedLine(self: *Gpu) void {
+        self.gp0_shaded_line_active = false;
+        self.gp0_shaded_line_index = 0;
     }
 
     fn gp0CommandRawTexture(cmd: u8) bool {
