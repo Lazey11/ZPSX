@@ -925,17 +925,11 @@ pub const Gpu = struct {
                 self.startShadedPolyline(cmd, value);
             },
             0x34, 0x36 => {
-                self.setGp0DrawSemiTransparentFromCommand(cmd);
-                self.gp0_shaded_textured_tri_color = rgb24ToRgb555(value);
-                self.gp0_shaded_textured_tri_active = true;
-                self.gp0_shaded_textured_tri_index = 0;
+                self.startShadedTexturedTri(cmd, value);
                 return;
             },
             0x3C, 0x3E => {
-                self.setGp0DrawSemiTransparentFromCommand(cmd);
-                self.gp0_shaded_textured_quad_color = rgb24ToRgb555(value);
-                self.gp0_shaded_textured_quad_active = true;
-                self.gp0_shaded_textured_quad_index = 0;
+                self.startShadedTexturedQuad(cmd, value);
                 return;
             },
             0x2C, 0x2D, 0x2E, 0x2F => {
@@ -953,9 +947,7 @@ pub const Gpu = struct {
                 self.startTexturedRect(cmd, value);
             },
             0x68 => {
-                self.setGp0DrawSemiTransparentFromCommand(cmd);
-                self.gp0_dot_color = rgb24ToRgb555(value);
-                self.gp0_dot_active = true;
+                self.startDot(cmd, value);
             },
             0x70, 0x72 => {
                 self.startFixedFilledRect(cmd, value, 8, 8);
@@ -1587,6 +1579,26 @@ pub const Gpu = struct {
         self.gp0_textured_quad_color = value;
         self.gp0_textured_quad_active = true;
         self.gp0_textured_quad_index = 0;
+    }
+
+    fn startShadedTexturedTri(self: *Gpu, cmd: u8, value: u32) void {
+        self.setGp0DrawSemiTransparentFromCommand(cmd);
+        self.gp0_shaded_textured_tri_color = rgb24ToRgb555(value);
+        self.gp0_shaded_textured_tri_active = true;
+        self.gp0_shaded_textured_tri_index = 0;
+    }
+
+    fn startShadedTexturedQuad(self: *Gpu, cmd: u8, value: u32) void {
+        self.setGp0DrawSemiTransparentFromCommand(cmd);
+        self.gp0_shaded_textured_quad_color = rgb24ToRgb555(value);
+        self.gp0_shaded_textured_quad_active = true;
+        self.gp0_shaded_textured_quad_index = 0;
+    }
+
+    fn startDot(self: *Gpu, cmd: u8, value: u32) void {
+        self.setGp0DrawSemiTransparentFromCommand(cmd);
+        self.gp0_dot_color = rgb24ToRgb555(value);
+        self.gp0_dot_active = true;
     }
 
     fn gp0CommandRawTexture(cmd: u8) bool {
