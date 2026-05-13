@@ -486,8 +486,7 @@ pub const Gpu = struct {
                     size_rect.h,
                     self.gp0_vram_fill_color,
                 );
-                self.gp0_vram_fill_active = false;
-                self.gp0_vram_fill_index = 0;
+                self.finishVramFill();
             }
             return;
         }
@@ -550,8 +549,7 @@ pub const Gpu = struct {
                     c3,
                     tpage,
                 );
-                self.gp0_shaded_textured_quad_active = false;
-                self.gp0_shaded_textured_quad_index = 0;
+                self.finishShadedTexturedQuad();
             }
 
             return;
@@ -593,8 +591,7 @@ pub const Gpu = struct {
                     c2,
                     tpage,
                 );
-                self.gp0_shaded_textured_tri_active = false;
-                self.gp0_shaded_textured_tri_index = 0;
+                self.finishShadedTexturedTri();
             }
 
             return;
@@ -1655,6 +1652,21 @@ pub const Gpu = struct {
     fn finishShadedLine(self: *Gpu) void {
         self.gp0_shaded_line_active = false;
         self.gp0_shaded_line_index = 0;
+    }
+
+    fn finishVramFill(self: *Gpu) void {
+        self.gp0_vram_fill_active = false;
+        self.gp0_vram_fill_index = 0;
+    }
+
+    fn finishShadedTexturedTri(self: *Gpu) void {
+        self.gp0_shaded_textured_tri_active = false;
+        self.gp0_shaded_textured_tri_index = 0;
+    }
+
+    fn finishShadedTexturedQuad(self: *Gpu) void {
+        self.gp0_shaded_textured_quad_active = false;
+        self.gp0_shaded_textured_quad_index = 0;
     }
 
     fn gp0CommandRawTexture(cmd: u8) bool {
