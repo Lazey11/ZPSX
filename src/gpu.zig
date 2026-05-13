@@ -1021,6 +1021,27 @@ pub const Gpu = struct {
         return hasher.final();
     }
 
+    pub fn writeVramPpm(self: *const Gpu, io: std.Io, file: std.Io.File) !void {
+        var file_writer = file.writer(io, &.{});
+        const writer = &file_writer.interface;
+
+        try writer.print("P6\n{} {}\n255\n", .{ 1024, 512 });
+
+        for (self.vram) |pixel| {
+            const r5 = pixel & 0x1F;
+            const g5 = (pixel >> 5) & 0x1F;
+            const b5 = (pixel >> 10) & 0x1F;
+
+            const r8: u8 = @intCast((@as(u32, r5) * 255) / 31);
+            const g8: u8 = @intCast((@as(u32, g5) * 255) / 31);
+            const b8: u8 = @intCast((@as(u32, b5) * 255) / 31);
+
+            try writer.writeAll(&.{ r8, g8, b8 });
+        }
+
+        try writer.flush();
+    }
+
     fn writeImageData(self: *Gpu, value: u32) void {
         const lo: u16 = @intCast(value & 0xFFFF);
         const hi: u16 = @intCast((value >> 16) & 0xFFFF);

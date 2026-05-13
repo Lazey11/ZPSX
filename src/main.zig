@@ -32,10 +32,22 @@ fn parseGpuCrc(args: []const []const u8) bool {
     return hasArg(args, "--gpu-crc");
 }
 
+fn parseDumpVramPath(args: []const []const u8) !?[]const u8 {
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        if (std.mem.eql(u8, args[i], "--dump-vram")) {
+            if (i + 1 >= args.len) return error.MissingDumpVramPath;
+            return args[i + 1];
+        }
+    }
+
+    return null;
+}
+
 fn programPath(args: []const []const u8) ?[]const u8 {
     var i: usize = 2;
     while (i < args.len) : (i += 1) {
-        if (std.mem.eql(u8, args[i], "--frames")) {
+        if (std.mem.eql(u8, args[i], "--frames") or std.mem.eql(u8, args[i], "--dump-vram")) {
             i += 1;
             continue;
         }
@@ -55,13 +67,14 @@ pub fn main(init: std.process.Init) !void {
 
     const args = try init.minimal.args.toSlice(allocator);
     if (args.len < 2) {
-        std.debug.print("usage: ZPSX <bios.bin> [program.exe] [--headless] [--frames N] [--gpu-crc]\n", .{});
+        std.debug.print("usage: ZPSX <bios.bin> [program.exe] [--headless] [--frames N] [--gpu-crc] [--dump-vram out.ppm]\n", .{});
         return;
     }
 
     const headless = hasArg(args, "--headless");
     const frame_limit = try parseFrames(args);
     const print_gpu_crc = parseGpuCrc(args);
+    const dump_vram_path = try parseDumpVramPath(args);
     const program_path = programPath(args);
     var sdl = display.SDL{};
     var config: display.displayConfig = undefined;
@@ -158,5 +171,14 @@ pub fn main(init: std.process.Init) !void {
     }
     if (print_gpu_crc) {
         std.debug.print("GPU VRAM CRC32: 0x{X:0>8}\n", .{bus.gpu.vramCrc32()});
+    }
+
+    if (dump_vram_path) |path| {
+        try std.Io.Dir.cwd().createDirPath(init.io, "ppm");
+
+        const file = try std.Io.Dir.cwd().createFile(init.io, path, .{});
+        defer file.close(init.io);
+
+        try bus.gpu.writeVramPpm(init.io, file);
     }
 }
