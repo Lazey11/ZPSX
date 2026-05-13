@@ -910,10 +910,7 @@ pub const Gpu = struct {
                 self.startShadedTri(cmd, value);
             },
             0x38, 0x3A => {
-                self.setGp0DrawSemiTransparentFromCommand(cmd);
-                self.gp0_shaded_quad_color = rgb24ToRgb555(value);
-                self.gp0_shaded_quad_active = true;
-                self.gp0_shaded_quad_index = 0;
+                self.startShadedQuad(cmd, value);
             },
             0x40, 0x42 => {
                 self.startLine(cmd, value);
@@ -1575,6 +1572,13 @@ pub const Gpu = struct {
         self.gp0_shaded_tri_color = rgb24ToRgb555(value);
         self.gp0_shaded_tri_active = true;
         self.gp0_shaded_tri_index = 0;
+    }
+
+    fn startShadedQuad(self: *Gpu, cmd: u8, value: u32) void {
+        self.setGp0DrawSemiTransparentFromCommand(cmd);
+        self.gp0_shaded_quad_color = rgb24ToRgb555(value);
+        self.gp0_shaded_quad_active = true;
+        self.gp0_shaded_quad_index = 0;
     }
 
     fn gp0CommandRawTexture(cmd: u8) bool {
