@@ -5,7 +5,11 @@ set bios /home/user/psxtests/PS1_BIOS/SCPH1001.bin
 set tests \
     "/home/user/psxtests/PSX/GPU/16BPP/MemoryTransfer/MemoryTransfer16BPP.exe 0xD7E8890E" \
     "/home/user/psxtests/PSX/GPU/16BPP/RenderLine/RenderLine16BPP.exe 0xB696EC0C" \
-    "/home/user/psxtests/PSX/GPU/16BPP/RenderPolygon/RenderPolygon16BPP.exe 0xDB9B6861"
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderPolygon/RenderPolygon16BPP.exe 0xDB9B6861" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderPolygonClip/RenderPolygonClip16BPP.exe 0x9BBB1C5C" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderPolygonDither/RenderPolygonDither16BPP.exe 0x7F3630BD" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderRectangle/RenderRectangle16BPP.exe 0x9626A981" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderRectangleClip/RenderRectangleClip16BPP.exe 0xAD1C6E99"
 
 zig build -Doptimize=ReleaseFast; or exit 1
 
