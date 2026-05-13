@@ -1009,6 +1009,18 @@ pub const Gpu = struct {
         return self.gpu_info_response;
     }
 
+    pub fn vramCrc32(self: *const Gpu) u32 {
+        var hasher = std.hash.Crc32.init();
+
+        for (self.vram) |pixel| {
+            const lo: u8 = @intCast(pixel & 0x00FF);
+            const hi: u8 = @intCast(pixel >> 8);
+            hasher.update(&.{ lo, hi });
+        }
+
+        return hasher.final();
+    }
+
     fn writeImageData(self: *Gpu, value: u32) void {
         const lo: u16 = @intCast(value & 0xFFFF);
         const hi: u16 = @intCast((value >> 16) & 0xFFFF);
