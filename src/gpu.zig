@@ -925,10 +925,7 @@ pub const Gpu = struct {
                 self.gp0_shaded_quad_index = 0;
             },
             0x40, 0x42 => {
-                self.setGp0DrawSemiTransparentFromCommand(cmd);
-                self.gp0_line_color = rgb24ToRgb555(value);
-                self.gp0_line_active = true;
-                self.gp0_line_index = 0;
+                self.startLine(cmd, value);
             },
             0x48, 0x4A => {
                 self.setGp0DrawSemiTransparentFromCommand(cmd);
@@ -1547,6 +1544,13 @@ pub const Gpu = struct {
         self.gp0_sprite_color = rgb24ToRgb555(value);
         self.gp0_sprite_active = true;
         self.gp0_sprite_index = 0;
+    }
+
+    fn startLine(self: *Gpu, cmd: u8, value: u32) void {
+        self.setGp0DrawSemiTransparentFromCommand(cmd);
+        self.gp0_line_color = rgb24ToRgb555(value);
+        self.gp0_line_active = true;
+        self.gp0_line_index = 0;
     }
 
     fn gp0CommandRawTexture(cmd: u8) bool {
