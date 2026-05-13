@@ -22,7 +22,12 @@ set tests \
     "/home/user/psxtests/PSX/GPU/16BPP/RenderTextureRectangle/15BPP/RenderTextureRectangle15BPP.exe 0xD9D371DF" \
     "/home/user/psxtests/PSX/GPU/16BPP/RenderTextureRectangle/CLUT4BPP/RenderTextureRectangleCLUT4BPP.exe 0xC31E0C3A" \
     "/home/user/psxtests/PSX/GPU/16BPP/RenderTextureRectangle/CLUT8BPP/RenderTextureRectangleCLUT8BPP.exe 0xBEEF9E06" \
-    "/home/user/psxtests/PSX/GPU/16BPP/RenderTextureRectangle/MASK15BPP/RenderTextureRectangleMASK15BPP.exe 0x5AF99EB3"
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTextureRectangle/MASK15BPP/RenderTextureRectangleMASK15BPP.exe 0x5AF99EB3" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTextureWindowRectangle/15BPP/RenderTextureWindowRectangle15BPP.exe 0x55C44BCE" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTextureWindowRectangle/CLUT4BPP/RenderTextureWindowRectangleCLUT4BPP.exe 0x70EE811A" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTextureWindowRectangle/CLUT8BPP/RenderTextureWindowRectangleCLUT8BPP.exe 0xDEDFDFB1" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTextureWindowRectangle/MASK15BPP/RenderTextureWindowRectangleMASK15BPP.exe 0x03A352E4" \
+    "/home/user/psxtests/PSX/GPU/24BPP/MemoryTransfer/MemoryTransfer24BPP.exe 0x81DE4B90"
 
 zig build -Doptimize=ReleaseFast; or exit 1
 
