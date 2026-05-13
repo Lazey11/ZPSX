@@ -1,5 +1,6 @@
 .zig-cache/
 zig-out/
+ppm/
 *.o
 *.exe
 vram_640_0.ppm
