@@ -9,7 +9,11 @@ set tests \
     "/home/user/psxtests/PSX/GPU/16BPP/RenderPolygonClip/RenderPolygonClip16BPP.exe 0x9BBB1C5C" \
     "/home/user/psxtests/PSX/GPU/16BPP/RenderPolygonDither/RenderPolygonDither16BPP.exe 0x7F3630BD" \
     "/home/user/psxtests/PSX/GPU/16BPP/RenderRectangle/RenderRectangle16BPP.exe 0x9626A981" \
-    "/home/user/psxtests/PSX/GPU/16BPP/RenderRectangleClip/RenderRectangleClip16BPP.exe 0xAD1C6E99"
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderRectangleClip/RenderRectangleClip16BPP.exe 0xAD1C6E99" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/15BPP/RenderTexturePolygon15BPP.exe 0xBE1231BC" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/CLUT4BPP/RenderTexturePolygonCLUT4BPP.exe 0x9C16E5CB" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/CLUT8BPP/RenderTexturePolygonCLUT8BPP.exe 0xE1E777F7" \
+    "/home/user/psxtests/PSX/GPU/16BPP/RenderTexturePolygon/MASK15BPP/RenderTexturePolygonMASK15BPP.exe 0x2CA9926F"
 
 zig build -Doptimize=ReleaseFast; or exit 1
 
