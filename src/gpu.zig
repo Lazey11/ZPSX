@@ -939,10 +939,7 @@ pub const Gpu = struct {
                 return;
             },
             0x2C, 0x2D, 0x2E, 0x2F => {
-                self.setGp0DrawSemiTransparentFromCommand(cmd);
-                self.gp0_textured_quad_color = value;
-                self.gp0_textured_quad_active = true;
-                self.gp0_textured_quad_index = 0;
+                self.startTexturedQuad(cmd, value);
                 return;
             },
             0x24, 0x25, 0x26, 0x27 => {
@@ -1583,6 +1580,13 @@ pub const Gpu = struct {
         self.setGp0DrawSemiTransparentFromCommand(cmd);
         self.gp0_textured_tri_active = true;
         self.gp0_textured_tri_index = 0;
+    }
+
+    fn startTexturedQuad(self: *Gpu, cmd: u8, value: u32) void {
+        self.setGp0DrawSemiTransparentFromCommand(cmd);
+        self.gp0_textured_quad_color = value;
+        self.gp0_textured_quad_active = true;
+        self.gp0_textured_quad_index = 0;
     }
 
     fn gp0CommandRawTexture(cmd: u8) bool {
