@@ -736,8 +736,7 @@ pub const Gpu = struct {
 
         if (self.gp0_polyline_active) {
             if (value == 0x5555_5555 or value == 0x5000_5000) {
-                self.gp0_polyline_active = false;
-                self.gp0_polyline_have_last = false;
+                self.finishPolyline();
                 return;
             }
 
@@ -781,9 +780,7 @@ pub const Gpu = struct {
 
         if (self.gp0_shaded_polyline_active) {
             if (value == 0x5555_5555 or value == 0x5000_5000) {
-                self.gp0_shaded_polyline_active = false;
-                self.gp0_shaded_polyline_have_last = false;
-                self.gp0_shaded_polyline_need_xy = true;
+                self.finishShadedPolyline();
                 return;
             }
 
@@ -1667,6 +1664,17 @@ pub const Gpu = struct {
     fn finishShadedTexturedQuad(self: *Gpu) void {
         self.gp0_shaded_textured_quad_active = false;
         self.gp0_shaded_textured_quad_index = 0;
+    }
+
+    fn finishPolyline(self: *Gpu) void {
+        self.gp0_polyline_active = false;
+        self.gp0_polyline_have_last = false;
+    }
+
+    fn finishShadedPolyline(self: *Gpu) void {
+        self.gp0_shaded_polyline_active = false;
+        self.gp0_shaded_polyline_have_last = false;
+        self.gp0_shaded_polyline_need_xy = true;
     }
 
     fn gp0CommandRawTexture(cmd: u8) bool {
