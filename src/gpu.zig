@@ -359,7 +359,7 @@ pub const Gpu = struct {
         if (self.gp0_dot_active) {
             const p = self.offsetPoint(value);
             self.putPixel(p.x, p.y, self.gp0_dot_color);
-            self.gp0_dot_active = false;
+            self.finishDot();
             return;
         }
 
@@ -374,8 +374,7 @@ pub const Gpu = struct {
                     self.gp0_vram_copy_words[2],
                 );
 
-                self.gp0_vram_copy_active = false;
-                self.gp0_vram_copy_index = 0;
+                self.finishVramCopy();
             }
 
             return;
@@ -412,8 +411,7 @@ pub const Gpu = struct {
                     size_rect.h,
                     self.gp0_sprite_color,
                 );
-                self.gp0_sprite_active = false;
-                self.gp0_sprite_index = 0;
+                self.finishSprite();
             }
             return;
         }
@@ -437,8 +435,7 @@ pub const Gpu = struct {
                     self.gp0_fixed_textured_rect_raw_texture,
                 );
 
-                self.gp0_fixed_textured_rect_active = false;
-                self.gp0_fixed_textured_rect_index = 0;
+                self.finishFixedTexturedRect();
             }
 
             return;
@@ -464,8 +461,7 @@ pub const Gpu = struct {
                     size_rect.h,
                     self.gp0_textured_rect_raw_texture,
                 );
-                self.gp0_textured_rect_active = false;
-                self.gp0_textured_rect_index = 0;
+                self.finishTexturedRect();
             }
 
             return;
@@ -1599,6 +1595,30 @@ pub const Gpu = struct {
         self.setGp0DrawSemiTransparentFromCommand(cmd);
         self.gp0_dot_color = rgb24ToRgb555(value);
         self.gp0_dot_active = true;
+    }
+
+    fn finishDot(self: *Gpu) void {
+        self.gp0_dot_active = false;
+    }
+
+    fn finishVramCopy(self: *Gpu) void {
+        self.gp0_vram_copy_active = false;
+        self.gp0_vram_copy_index = 0;
+    }
+
+    fn finishSprite(self: *Gpu) void {
+        self.gp0_sprite_active = false;
+        self.gp0_sprite_index = 0;
+    }
+
+    fn finishFixedTexturedRect(self: *Gpu) void {
+        self.gp0_fixed_textured_rect_active = false;
+        self.gp0_fixed_textured_rect_index = 0;
+    }
+
+    fn finishTexturedRect(self: *Gpu) void {
+        self.gp0_textured_rect_active = false;
+        self.gp0_textured_rect_index = 0;
     }
 
     fn gp0CommandRawTexture(cmd: u8) bool {
