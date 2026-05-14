@@ -2057,8 +2057,8 @@ pub const Gpu = struct {
         weights: TriangleWeights,
         area: u64,
     ) u16 {
-        const tu = triangleInterpolateU8(tex.u0, tex.u1, tex.u2, weights, area);
-        const tv = triangleInterpolateU8(tex.v0, tex.v1, tex.v2, weights, area);
+        const tu = texCoord8(triangleInterpolateU8(tex.u0, tex.u1, tex.u2, weights, area));
+        const tv = texCoord8(triangleInterpolateU8(tex.v0, tex.v1, tex.v2, weights, area));
 
         return self.sampleTextureMode(
             tex.tex_mode,
