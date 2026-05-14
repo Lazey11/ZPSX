@@ -3,6 +3,14 @@ const debugPrint = std.debug.print;
 const C = @import("C");
 const gpu_f = @import("gpu.zig");
 
+const VRAM_WIDTH = 1024;
+const VRAM_HEIGHT = 512;
+const VRAM_PIXELS = VRAM_WIDTH * VRAM_HEIGHT;
+const VRAM_BYTES = VRAM_PIXELS * 2;
+const VRAM_24BPP_ROW_BYTES = VRAM_WIDTH * 2;
+
+const RGB555_MASK = 0x1F;
+
 pub const EmuState = enum {
     RUNNING,
     PAUSED,
@@ -118,9 +126,26 @@ fn displayWidthScale(display_mode: u32) u32 {
 fn displayIs24Bpp(display_mode: u32) bool {
     return (display_mode & 0x10) != 0;
 }
+
+fn vramIndex(x: u32, y: u32) usize {
+    return @intCast(y * VRAM_WIDTH + x);
+}
+
+fn rgb555ToArgb(px: u16) u32 {
+    const r5: u32 = px & RGB555_MASK;
+    const g5: u32 = (px >> 5) & RGB555_MASK;
+    const b5: u32 = (px >> 10) & RGB555_MASK;
+
+    const r: u32 = (r5 << 3) | (r5 >> 2);
+    const g: u32 = (g5 << 3) | (g5 >> 2);
+    const b: u32 = (b5 << 3) | (b5 >> 2);
+
+    return 0xFF000000 | (r << 16) | (g << 8) | b;
+}
+
 fn vramByte(gpu: *const gpu_f.Gpu, byte_index: u32) u8 {
     const word_index = byte_index / 2;
-    if (word_index >= 1024 * 512) return 0;
+    if (word_index >= VRAM_PIXELS) return 0;
 
     const word = gpu.vram[@intCast(word_index)];
     return @intCast(if ((byte_index & 1) == 0)
@@ -153,32 +178,23 @@ pub fn drawVramToScreen(sdl: *SDL, config: *displayConfig, gpu: *const gpu_f.Gpu
             const src_y = @as(u32, gpu.display_y) + (y / 2);
 
             var argb: u32 = 0xFF000000;
-            if (src_y < 512) {
+            if (src_y < VRAM_HEIGHT) {
                 if (displayIs24Bpp(gpu.display_mode)) {
                     const byte_index =
-                        (src_y * 2048) +
+                        (src_y * VRAM_24BPP_ROW_BYTES) +
                         (@as(u32, gpu.display_x) * 2) +
                         (display_px * 3);
 
-                    if (byte_index + 2 < 1024 * 512 * 2) {
+                    if (byte_index + 2 < VRAM_BYTES) {
                         const r: u32 = vramByte(gpu, byte_index + 0);
                         const g: u32 = vramByte(gpu, byte_index + 1);
                         const b: u32 = vramByte(gpu, byte_index + 2);
 
                         argb = 0xFF000000 | (r << 16) | (g << 8) | b;
                     }
-                } else if (src_x < 1024) {
-                    const px = gpu.vram[@intCast(src_y * 1024 + src_x)];
-
-                    const r5: u32 = px & 0x1F;
-                    const g5: u32 = (px >> 5) & 0x1F;
-                    const b5: u32 = (px >> 10) & 0x1F;
-
-                    const r: u32 = (r5 << 3) | (r5 >> 2);
-                    const g: u32 = (g5 << 3) | (g5 >> 2);
-                    const b: u32 = (b5 << 3) | (b5 >> 2);
-
-                    argb = 0xFF000000 | (r << 16) | (g << 8) | b;
+                } else if (src_x < VRAM_WIDTH) {
+                    const px = gpu.vram[vramIndex(src_x, src_y)];
+                    argb = rgb555ToArgb(px);
                 }
             }
 
