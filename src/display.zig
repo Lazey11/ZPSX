@@ -123,6 +123,12 @@ fn displayWidthScale(display_mode: u32) u32 {
         else => 2,
     };
 }
+
+fn displayHeightScale(display_mode: u32) u32 {
+    const vertical_480 = (display_mode & 0x04) != 0;
+    return if (vertical_480) 1 else 2;
+}
+
 fn displayIs24Bpp(display_mode: u32) bool {
     return (display_mode & 0x10) != 0;
 }
@@ -173,9 +179,10 @@ pub fn drawVramToScreen(sdl: *SDL, config: *displayConfig, gpu: *const gpu_f.Gpu
         var x: u32 = 0;
         while (x < config.windowWidth) : (x += 1) {
             const x_scale = displayWidthScale(gpu.display_mode);
+            const y_scale = displayHeightScale(gpu.display_mode);
             const display_px = x / x_scale;
             const src_x = @as(u32, gpu.display_x) + display_px;
-            const src_y = @as(u32, gpu.display_y) + (y / 2);
+            const src_y = @as(u32, gpu.display_y) + (y / y_scale);
 
             var argb: u32 = 0xFF000000;
             if (src_y < VRAM_HEIGHT) {
