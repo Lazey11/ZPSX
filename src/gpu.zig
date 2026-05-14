@@ -1536,6 +1536,32 @@ pub const Gpu = struct {
         self.draw_offset_y = oy;
     }
 
+    fn setDisplayStart(self: *Gpu, param: u32) void {
+        self.display_x = @intCast(param & 0x3FF);
+        self.display_y = @intCast((param >> 10) & 0x1FF);
+    }
+
+    fn setDisplayHorizontalRange(self: *Gpu, param: u32) void {
+        self.display_h_start = @intCast(param & 0xFFF);
+        self.display_h_end = @intCast((param >> 12) & 0xFFF);
+    }
+
+    fn setDisplayVerticalRange(self: *Gpu, param: u32) void {
+        self.display_v_start = @intCast(param & 0x3FF);
+        self.display_v_end = @intCast((param >> 10) & 0x3FF);
+    }
+
+    fn setGpuInfoResponse(self: *Gpu, param: u32) void {
+        self.gpu_info_response = switch (param & 0xF) {
+            0x2 => @as(u32, self.display_x) | (@as(u32, self.display_y) << 10),
+            0x3 => @as(u32, self.display_h_start) | (@as(u32, self.display_h_end) << 12),
+            0x4 => @as(u32, self.display_v_start) | (@as(u32, self.display_v_end) << 10),
+            0x5 => self.display_mode,
+            0x7 => 2,
+            else => 0,
+        };
+    }
+
     fn setVramTransferSize(self: *Gpu, word: u32) void {
         self.vram_w = @intCast(word & 0xFFFF);
         self.vram_h = @intCast((word >> 16) & 0xFFFF);
@@ -1991,29 +2017,19 @@ pub const Gpu = struct {
                 self.dma_direction = param & 0x3;
             },
             0x05 => {
-                self.display_x = @intCast(param & 0x3FF);
-                self.display_y = @intCast((param >> 10) & 0x1FF);
+                self.setDisplayStart(param);
             },
             0x06 => {
-                self.display_h_start = @intCast(param & 0xFFF);
-                self.display_h_end = @intCast((param >> 12) & 0xFFF);
+                self.setDisplayHorizontalRange(param);
             },
             0x07 => {
-                self.display_v_start = @intCast(param & 0x3FF);
-                self.display_v_end = @intCast((param >> 10) & 0x3FF);
+                self.setDisplayVerticalRange(param);
             },
             0x08 => {
                 self.display_mode = param;
             },
             0x10 => {
-                self.gpu_info_response = switch (param & 0xF) {
-                    0x2 => @as(u32, self.display_x) | (@as(u32, self.display_y) << 10),
-                    0x3 => @as(u32, self.display_h_start) | (@as(u32, self.display_h_end) << 12),
-                    0x4 => @as(u32, self.display_v_start) | (@as(u32, self.display_v_end) << 10),
-                    0x5 => self.display_mode,
-                    0x7 => 2,
-                    else => 0,
-                };
+                self.setGpuInfoResponse(param);
             },
             else => {},
         }
