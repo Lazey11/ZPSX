@@ -1358,6 +1358,10 @@ pub const Gpu = struct {
         };
     }
 
+    fn texCoord8(value: u32) u32 {
+        return value & 0xFF;
+    }
+
     fn sampleRectTexture(
         self: *const Gpu,
         tex: RectTextureSetup,
@@ -1370,8 +1374,8 @@ pub const Gpu = struct {
             tex.tex_base_y,
             tex.clx,
             tex.cly,
-            tex.u0 + xx,
-            tex.v0 + yy,
+            texCoord8(tex.u0 + xx),
+            texCoord8(tex.v0 + yy),
         );
     }
 
