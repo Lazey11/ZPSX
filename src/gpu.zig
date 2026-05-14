@@ -883,10 +883,7 @@ pub const Gpu = struct {
             0x01 => {},
             0x03 => {},
             0x02 => {
-                self.clearGp0DrawSemiTransparent();
-                self.gp0_vram_fill_color = rgb24ToRgb555(value);
-                self.gp0_vram_fill_active = true;
-                self.gp0_vram_fill_index = 0;
+                self.startVramFill(value);
             },
             0x20, 0x22 => {
                 self.startFilledTri(cmd, value);
@@ -947,9 +944,7 @@ pub const Gpu = struct {
                 self.startFixedFilledRect(cmd, value, 16, 16);
             },
             0x80 => {
-                self.clearGp0DrawSemiTransparent();
-                self.gp0_vram_copy_active = true;
-                self.gp0_vram_copy_index = 0;
+                self.startVramCopy();
             },
             0x7C, 0x7D, 0x7E, 0x7F => {
                 self.startFixedTexturedRect(cmd, value, 16, 16);
@@ -1530,6 +1525,19 @@ pub const Gpu = struct {
         self.gp0_sprite_color = rgb24ToRgb555(value);
         self.gp0_sprite_active = true;
         self.gp0_sprite_index = 0;
+    }
+
+    fn startVramFill(self: *Gpu, value: u32) void {
+        self.clearGp0DrawSemiTransparent();
+        self.gp0_vram_fill_color = rgb24ToRgb555(value);
+        self.gp0_vram_fill_active = true;
+        self.gp0_vram_fill_index = 0;
+    }
+
+    fn startVramCopy(self: *Gpu) void {
+        self.clearGp0DrawSemiTransparent();
+        self.gp0_vram_copy_active = true;
+        self.gp0_vram_copy_index = 0;
     }
 
     fn startLine(self: *Gpu, cmd: u8, value: u32) void {
