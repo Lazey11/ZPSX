@@ -11,6 +11,25 @@ pub const Gpu = struct {
     const VRAM_MAX_Y = VRAM_HEIGHT - 1;
     const VRAM_PIXELS = VRAM_WIDTH * VRAM_HEIGHT;
 
+    const GP_PARAM_MASK = 0x00FF_FFFF;
+    const GP_INFO_REQUEST_MASK = 0xF;
+    const DMA_DIRECTION_MASK = 0x3;
+
+    const FIELD_16_MASK = 0xFFFF;
+    const FIELD_12_MASK = 0xFFF;
+    const FIELD_11_MASK = 0x7FF;
+    const FIELD_10_MASK = 0x3FF;
+    const FIELD_9_MASK = 0x1FF;
+
+    const SIGN_11_BIT = 0x400;
+    const SIGN_11_EXTEND = 0x800;
+
+    const RGB555_COLOR_MASK = 0x7FFF;
+    const VRAM_MASK_BIT = 0x8000;
+
+    const POLYLINE_TERMINATOR = 0x5000_5000;
+    const POLYLINE_TERMINATOR_ALT = 0x5555_5555;
+
     unsupported_gp0_log_count: u32 = 0,
 
     status: u32 = 0x1C00_0000,
@@ -131,7 +150,7 @@ pub const Gpu = struct {
     gp0_vram_fill_index: u8 = 0,
     gp0_vram_fill_active: bool = false,
 
-    gp0_textured_rect_color: u16 = 0x7FFF,
+    gp0_textured_rect_color: u16 = RGB555_COLOR_MASK,
     gp0_textured_rect_raw_texture: bool = false,
     gp0_textured_rect_words: [3]u32 = [_]u32{0} ** 3,
     gp0_textured_rect_index: u8 = 0,
@@ -164,24 +183,44 @@ pub const Gpu = struct {
             value &= ~(@as(u32, 1) << 23);
         }
 
-        value &= ~(@as(u32, 0x3) << 29);
-        value |= (self.dma_direction & 0x3) << 29;
+        value &= ~(@as(u32, DMA_DIRECTION_MASK) << 29);
+        value |= (self.dma_direction & DMA_DIRECTION_MASK) << 29;
 
         value |= 0x1C00_0000;
 
         return value;
     }
 
-    fn xyX(word: u32) i32 {
-        const raw: u16 = @intCast(word & 0xFFFF);
+    fn gpParam(word: u32) u32 {
+        return word & GP_PARAM_MASK;
+    }
+
+    fn wordLo16(word: u32) u32 {
+        return word & FIELD_16_MASK;
+    }
+
+    fn wordHi16(word: u32) u32 {
+        return (word >> 16) & FIELD_16_MASK;
+    }
+
+    fn signed16(value: u32) i32 {
+        const raw: u16 = @intCast(value);
         const signed: i16 = @bitCast(raw);
         return @as(i32, signed);
     }
 
+    fn signed11(raw: u16) i32 {
+        var value: i32 = @intCast(raw);
+        if ((raw & SIGN_11_BIT) != 0) value -= SIGN_11_EXTEND;
+        return value;
+    }
+
+    fn xyX(word: u32) i32 {
+        return signed16(wordLo16(word));
+    }
+
     fn xyY(word: u32) i32 {
-        const raw: u16 = @intCast((word >> 16) & 0xFFFF);
-        const signed: i16 = @bitCast(raw);
-        return @as(i32, signed);
+        return signed16(wordHi16(word));
     }
 
     fn uvU(word: u32) u32 {
@@ -197,11 +236,11 @@ pub const Gpu = struct {
     }
 
     fn clutY(word: u32) u32 {
-        return (word >> 22) & 0x1FF;
+        return (word >> 22) & FIELD_9_MASK;
     }
 
     fn texturePageBaseX(draw_mode: u32) u32 {
-        return (draw_mode & 0xF) * 64;
+        return (draw_mode & GP_INFO_REQUEST_MASK) * 64;
     }
 
     fn texturePageBaseY(draw_mode: u32) u32 {
@@ -209,7 +248,7 @@ pub const Gpu = struct {
     }
 
     fn textureMode(draw_mode: u32) u32 {
-        return (draw_mode >> 7) & 0x3;
+        return (draw_mode >> 7) & DMA_DIRECTION_MASK;
     }
 
     fn textureWindowMaskX(texture_window: u32) u32 {
@@ -481,8 +520,8 @@ pub const Gpu = struct {
                 const xy = self.gp0_vram_fill_words[0];
                 const size = self.gp0_vram_fill_words[1];
 
-                const x: i32 = @intCast(xy & 0xFFFF);
-                const y: i32 = @intCast((xy >> 16) & 0xFFFF);
+                const x: i32 = @intCast(wordLo16(xy));
+                const y: i32 = @intCast(wordHi16(xy));
                 const size_rect = rectSize(size);
 
                 self.drawFilledRect(
@@ -523,7 +562,7 @@ pub const Gpu = struct {
                 const c1 = rgb24ToRgb555(c1_word);
                 const c2 = rgb24ToRgb555(c2_word);
                 const c3 = rgb24ToRgb555(c3_word);
-                const tpage = (uv1 >> 16) & 0xFFFF;
+                const tpage = (uv1 >> 16) & FIELD_16_MASK;
 
                 self.drawShadedTexturedTriangleWithTpage(
                     p0.x,
@@ -580,7 +619,7 @@ pub const Gpu = struct {
                 const c0 = self.gp0_shaded_textured_tri_color;
                 const c1 = rgb24ToRgb555(self.gp0_shaded_textured_tri_words[2]);
                 const c2 = rgb24ToRgb555(self.gp0_shaded_textured_tri_words[5]);
-                const tpage = (uv1 >> 16) & 0xFFFF;
+                const tpage = (uv1 >> 16) & FIELD_16_MASK;
 
                 self.drawShadedTexturedTriangleWithTpage(
                     p0.x,
@@ -741,7 +780,7 @@ pub const Gpu = struct {
         }
 
         if (self.gp0_polyline_active) {
-            if (value == 0x5555_5555 or value == 0x5000_5000) {
+            if (value == POLYLINE_TERMINATOR_ALT or value == POLYLINE_TERMINATOR) {
                 self.finishPolyline();
                 return;
             }
@@ -785,7 +824,7 @@ pub const Gpu = struct {
         }
 
         if (self.gp0_shaded_polyline_active) {
-            if (value == 0x5555_5555 or value == 0x5000_5000) {
+            if (value == POLYLINE_TERMINATOR_ALT or value == POLYLINE_TERMINATOR) {
                 self.finishShadedPolyline();
                 return;
             }
@@ -827,7 +866,7 @@ pub const Gpu = struct {
         switch (self.gp0_mode) {
             1 => {
                 self.setVramTransferPos(value);
-                self.gp0_mode = 2;
+                self.setGp0ModeCpuToVramSize();
                 return;
             },
 
@@ -844,13 +883,13 @@ pub const Gpu = struct {
 
             4 => {
                 self.setVramTransferPos(value);
-                self.gp0_mode = 5;
+                self.setGp0ModeVramToCpuSize();
                 return;
             },
 
             5 => {
                 self.setVramTransferSize(value);
-                self.gp0_mode = 0;
+                self.setGp0ModeCommand();
                 return;
             },
 
@@ -950,12 +989,10 @@ pub const Gpu = struct {
                 self.setMaskBitSetting(value);
             },
             0xA0 => {
-                self.clearGp0DrawSemiTransparent();
-                self.gp0_mode = 1;
+                self.setGp0ModeCpuToVramPos();
             },
             0xC0 => {
-                self.clearGp0DrawSemiTransparent();
-                self.gp0_mode = 4;
+                self.setGp0ModeVramToCpuPos();
             },
             else => {
                 if (debug_f.enable_gpu_unsupported_trace and self.unsupported_gp0_log_count < 128) {
@@ -1007,8 +1044,8 @@ pub const Gpu = struct {
     }
 
     fn writeImageData(self: *Gpu, value: u32) void {
-        const lo: u16 = @intCast(value & 0xFFFF);
-        const hi: u16 = @intCast((value >> 16) & 0xFFFF);
+        const lo: u16 = @intCast(wordLo16(value));
+        const hi: u16 = @intCast(wordHi16(value));
 
         const pixel_count: u32 = @as(u32, self.image_w) * @as(u32, self.image_h);
 
@@ -1020,7 +1057,7 @@ pub const Gpu = struct {
         }
 
         if (self.gp0_words_remaining == 0) {
-            self.gp0_mode = 0;
+            self.setGp0ModeCommand();
             self.status |= 0x1C00_0000;
         }
     }
@@ -1041,13 +1078,13 @@ pub const Gpu = struct {
     }
 
     fn copyVramRect(self: *Gpu, src_word: u32, dst_word: u32, size_word: u32) void {
-        const src_x: u32 = @intCast(src_word & 0xFFFF);
-        const src_y: u32 = @intCast((src_word >> 16) & 0xFFFF);
-        const dst_x: u32 = @intCast(dst_word & 0xFFFF);
-        const dst_y: u32 = @intCast((dst_word >> 16) & 0xFFFF);
+        const src_x: u32 = @intCast(wordLo16(src_word));
+        const src_y: u32 = @intCast(wordHi16(src_word));
+        const dst_x: u32 = @intCast(wordLo16(dst_word));
+        const dst_y: u32 = @intCast(wordHi16(dst_word));
 
-        var w: u32 = @intCast(size_word & 0xFFFF);
-        var h: u32 = @intCast((size_word >> 16) & 0xFFFF);
+        var w: u32 = @intCast(wordLo16(size_word));
+        var h: u32 = @intCast(wordHi16(size_word));
 
         if (w == 0) w = VRAM_WIDTH;
         if (h == 0) h = VRAM_HEIGHT;
@@ -1081,19 +1118,19 @@ pub const Gpu = struct {
 
         const index: usize = @intCast(uy * VRAM_WIDTH + ux);
 
-        if (self.mask_check_before_draw and (self.vram[index] & 0x8000) != 0) {
+        if (self.mask_check_before_draw and (self.vram[index] & VRAM_MASK_BIT) != 0) {
             return;
         }
 
-        var out_color = color & 0x7FFF;
+        var out_color = color & RGB555_COLOR_MASK;
 
         if (self.gp0_draw_semi_transparent) {
-            const dst = self.vram[index] & 0x7FFF;
+            const dst = self.vram[index] & RGB555_COLOR_MASK;
             out_color = blendSemiTransparent(out_color, dst, semiTransparencyMode(self.draw_mode));
         }
 
         if (self.mask_set_on_draw) {
-            out_color |= 0x8000;
+            out_color |= VRAM_MASK_BIT;
         }
 
         self.vram[index] = out_color;
@@ -1369,8 +1406,8 @@ pub const Gpu = struct {
 
     fn rectSize(word: u32) RectSize {
         return .{
-            .w = @intCast(word & 0xFFFF),
-            .h = @intCast((word >> 16) & 0xFFFF),
+            .w = @intCast(wordLo16(word)),
+            .h = @intCast(wordHi16(word)),
         };
     }
 
@@ -1464,11 +1501,11 @@ pub const Gpu = struct {
 
     fn setDrawMode(self: *Gpu, value: u32) void {
         self.clearGp0DrawSemiTransparent();
-        self.draw_mode = value & 0x00FF_FFFF;
+        self.draw_mode = gpParam(value);
     }
 
     fn setTextureWindow(self: *Gpu, value: u32) void {
-        self.texture_window = value & 0x00FF_FFFF;
+        self.texture_window = gpParam(value);
     }
 
     fn setMaskBitSetting(self: *Gpu, value: u32) void {
@@ -1524,52 +1561,45 @@ pub const Gpu = struct {
     }
 
     fn setVramTransferPos(self: *Gpu, word: u32) void {
-        self.vram_x = @intCast(word & 0xFFFF);
-        self.vram_y = @intCast((word >> 16) & 0xFFFF);
+        self.vram_x = @intCast(wordLo16(word));
+        self.vram_y = @intCast(wordHi16(word));
     }
 
     fn setDrawAreaTopLeft(self: *Gpu, word: u32) void {
-        const p = word & 0x00FF_FFFF;
-        self.draw_area_left = @intCast(p & 0x3FF);
-        self.draw_area_top = @intCast((p >> 10) & 0x1FF);
+        const p = gpParam(word);
+        self.draw_area_left = @intCast(p & FIELD_10_MASK);
+        self.draw_area_top = @intCast((p >> 10) & FIELD_9_MASK);
     }
 
     fn setDrawAreaBottomRight(self: *Gpu, word: u32) void {
-        const p = word & 0x00FF_FFFF;
-        self.draw_area_right = @intCast(p & 0x3FF);
-        self.draw_area_bottom = @intCast((p >> 10) & 0x1FF);
+        const p = gpParam(word);
+        self.draw_area_right = @intCast(p & FIELD_10_MASK);
+        self.draw_area_bottom = @intCast((p >> 10) & FIELD_9_MASK);
     }
 
     fn setDrawOffset(self: *Gpu, word: u32) void {
-        const p = word & 0x00FF_FFFF;
-        const ox_raw: u16 = @intCast(p & 0x7FF);
-        const oy_raw: u16 = @intCast((p >> 11) & 0x7FF);
-        var ox: i32 = @intCast(ox_raw);
-        var oy: i32 = @intCast(oy_raw);
-        if ((ox_raw & 0x400) != 0) ox -= 0x800;
-        if ((oy_raw & 0x400) != 0) oy -= 0x800;
-
-        self.draw_offset_x = ox;
-        self.draw_offset_y = oy;
+        const p = gpParam(word);
+        self.draw_offset_x = signed11(@intCast(p & FIELD_11_MASK));
+        self.draw_offset_y = signed11(@intCast((p >> 11) & FIELD_11_MASK));
     }
 
     fn setDisplayStart(self: *Gpu, param: u32) void {
-        self.display_x = @intCast(param & 0x3FF);
-        self.display_y = @intCast((param >> 10) & 0x1FF);
+        self.display_x = @intCast(param & FIELD_10_MASK);
+        self.display_y = @intCast((param >> 10) & FIELD_9_MASK);
     }
 
     fn setDisplayHorizontalRange(self: *Gpu, param: u32) void {
-        self.display_h_start = @intCast(param & 0xFFF);
-        self.display_h_end = @intCast((param >> 12) & 0xFFF);
+        self.display_h_start = @intCast(param & FIELD_12_MASK);
+        self.display_h_end = @intCast((param >> 12) & FIELD_12_MASK);
     }
 
     fn setDisplayVerticalRange(self: *Gpu, param: u32) void {
-        self.display_v_start = @intCast(param & 0x3FF);
-        self.display_v_end = @intCast((param >> 10) & 0x3FF);
+        self.display_v_start = @intCast(param & FIELD_10_MASK);
+        self.display_v_end = @intCast((param >> 10) & FIELD_10_MASK);
     }
 
     fn setGpuInfoResponse(self: *Gpu, param: u32) void {
-        self.gpu_info_response = switch (param & 0xF) {
+        self.gpu_info_response = switch (param & GP_INFO_REQUEST_MASK) {
             0x2 => @as(u32, self.display_x) | (@as(u32, self.display_y) << 10),
             0x3 => @as(u32, self.display_h_start) | (@as(u32, self.display_h_end) << 12),
             0x4 => @as(u32, self.display_v_start) | (@as(u32, self.display_v_end) << 10),
@@ -1591,7 +1621,7 @@ pub const Gpu = struct {
     }
 
     fn setDmaDirection(self: *Gpu, param: u32) void {
-        self.dma_direction = param & 0x3;
+        self.dma_direction = param & DMA_DIRECTION_MASK;
     }
 
     fn setDisplayMode(self: *Gpu, param: u32) void {
@@ -1599,8 +1629,8 @@ pub const Gpu = struct {
     }
 
     fn setVramTransferSize(self: *Gpu, word: u32) void {
-        self.vram_w = @intCast(word & 0xFFFF);
-        self.vram_h = @intCast((word >> 16) & 0xFFFF);
+        self.vram_w = @intCast(wordLo16(word));
+        self.vram_h = @intCast(wordHi16(word));
 
         if (self.vram_w == 0) self.vram_w = VRAM_WIDTH;
         if (self.vram_h == 0) self.vram_h = VRAM_HEIGHT;
@@ -1616,6 +1646,28 @@ pub const Gpu = struct {
         self.image_h = self.vram_h;
         self.image_index = 0;
         self.gp0_mode = 3;
+    }
+
+    fn setGp0ModeCommand(self: *Gpu) void {
+        self.gp0_mode = 0;
+    }
+
+    fn setGp0ModeCpuToVramSize(self: *Gpu) void {
+        self.gp0_mode = 2;
+    }
+
+    fn setGp0ModeVramToCpuSize(self: *Gpu) void {
+        self.gp0_mode = 5;
+    }
+
+    fn setGp0ModeCpuToVramPos(self: *Gpu) void {
+        self.clearGp0DrawSemiTransparent();
+        self.gp0_mode = 1;
+    }
+
+    fn setGp0ModeVramToCpuPos(self: *Gpu) void {
+        self.clearGp0DrawSemiTransparent();
+        self.gp0_mode = 4;
     }
 
     fn startLine(self: *Gpu, cmd: u8, value: u32) void {
@@ -1991,7 +2043,7 @@ pub const Gpu = struct {
         y2: i32,
         uv2_word: u32,
     ) void {
-        const tpage = (uv1_word >> 16) & 0xFFFF;
+        const tpage = (uv1_word >> 16) & FIELD_16_MASK;
         self.drawTexturedTriangleWithTpage(x0, y0, uv0_word, x1, y1, uv1_word, x2, y2, uv2_word, tpage);
     }
 
@@ -2029,7 +2081,7 @@ pub const Gpu = struct {
         self.gp1_last = value;
         _ = pc;
         const cmd: u8 = @intCast(value >> 24);
-        const param: u32 = value & 0x00FF_FFFF;
+        const param: u32 = gpParam(value);
 
         switch (cmd) {
             0x00 => {
