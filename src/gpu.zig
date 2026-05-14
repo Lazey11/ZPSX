@@ -939,26 +939,13 @@ pub const Gpu = struct {
                 self.texture_window = value & 0x00FF_FFFF;
             },
             0xE3 => {
-                const p = value & 0x00FF_FFFF;
-                self.draw_area_left = @intCast(p & 0x3FF);
-                self.draw_area_top = @intCast((p >> 10) & 0x1FF);
+                self.setDrawAreaTopLeft(value);
             },
             0xE4 => {
-                const p = value & 0x00FF_FFFF;
-                self.draw_area_right = @intCast(p & 0x3FF);
-                self.draw_area_bottom = @intCast((p >> 10) & 0x1FF);
+                self.setDrawAreaBottomRight(value);
             },
             0xE5 => {
-                const p = value & 0x00FF_FFFF;
-                const ox_raw: u16 = @intCast(p & 0x7FF);
-                const oy_raw: u16 = @intCast((p >> 11) & 0x7FF);
-                var ox: i32 = @intCast(ox_raw);
-                var oy: i32 = @intCast(oy_raw);
-                if ((ox_raw & 0x400) != 0) ox -= 0x800;
-                if ((oy_raw & 0x400) != 0) oy -= 0x800;
-
-                self.draw_offset_x = ox;
-                self.draw_offset_y = oy;
+                self.setDrawOffset(value);
             },
             0xE6 => {
                 self.clearGp0DrawSemiTransparent();
@@ -1522,6 +1509,31 @@ pub const Gpu = struct {
     fn setVramTransferPos(self: *Gpu, word: u32) void {
         self.vram_x = @intCast(word & 0xFFFF);
         self.vram_y = @intCast((word >> 16) & 0xFFFF);
+    }
+
+    fn setDrawAreaTopLeft(self: *Gpu, word: u32) void {
+        const p = word & 0x00FF_FFFF;
+        self.draw_area_left = @intCast(p & 0x3FF);
+        self.draw_area_top = @intCast((p >> 10) & 0x1FF);
+    }
+
+    fn setDrawAreaBottomRight(self: *Gpu, word: u32) void {
+        const p = word & 0x00FF_FFFF;
+        self.draw_area_right = @intCast(p & 0x3FF);
+        self.draw_area_bottom = @intCast((p >> 10) & 0x1FF);
+    }
+
+    fn setDrawOffset(self: *Gpu, word: u32) void {
+        const p = word & 0x00FF_FFFF;
+        const ox_raw: u16 = @intCast(p & 0x7FF);
+        const oy_raw: u16 = @intCast((p >> 11) & 0x7FF);
+        var ox: i32 = @intCast(ox_raw);
+        var oy: i32 = @intCast(oy_raw);
+        if ((ox_raw & 0x400) != 0) ox -= 0x800;
+        if ((oy_raw & 0x400) != 0) oy -= 0x800;
+
+        self.draw_offset_x = ox;
+        self.draw_offset_y = oy;
     }
 
     fn setVramTransferSize(self: *Gpu, word: u32) void {
