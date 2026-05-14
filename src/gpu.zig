@@ -1031,7 +1031,7 @@ pub const Gpu = struct {
         var file_writer = file.writer(io, &.{});
         const writer = &file_writer.interface;
 
-        try writer.print("P6\n{} {}\n255\n", .{ 1024, 512 });
+        try writer.print("P6\n{} {}\n255\n", .{ VRAM_WIDTH, VRAM_HEIGHT });
 
         for (self.vram) |pixel| {
             const r5 = pixel & 0x1F;
