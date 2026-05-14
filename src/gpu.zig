@@ -826,29 +826,14 @@ pub const Gpu = struct {
 
         switch (self.gp0_mode) {
             1 => {
-                self.vram_x = @intCast(value & 0xFFFF);
-                self.vram_y = @intCast((value >> 16) & 0xFFFF);
+                self.setVramTransferPos(value);
                 self.gp0_mode = 2;
                 return;
             },
 
             2 => {
-                self.vram_w = @intCast(value & 0xFFFF);
-                self.vram_h = @intCast((value >> 16) & 0xFFFF);
-
-                if (self.vram_w == 0) self.vram_w = VRAM_WIDTH;
-                if (self.vram_h == 0) self.vram_h = VRAM_HEIGHT;
-
-                const pixels: u32 = @as(u32, self.vram_w) * @as(u32, self.vram_h);
-
-                self.gp0_words_remaining = (pixels + 1) / 2;
-                self.image_x = self.vram_x;
-                self.image_y = self.vram_y;
-                self.image_w = self.vram_w;
-                self.image_h = self.vram_h;
-                self.image_index = 0;
-                self.gp0_mode = 3;
-
+                self.setVramTransferSize(value);
+                self.startCpuToVramTransferData();
                 return;
             },
 
@@ -858,19 +843,13 @@ pub const Gpu = struct {
             },
 
             4 => {
-                self.vram_x = @intCast(value & 0xFFFF);
-                self.vram_y = @intCast((value >> 16) & 0xFFFF);
+                self.setVramTransferPos(value);
                 self.gp0_mode = 5;
                 return;
             },
 
             5 => {
-                self.vram_w = @intCast(value & 0xFFFF);
-                self.vram_h = @intCast((value >> 16) & 0xFFFF);
-
-                if (self.vram_w == 0) self.vram_w = VRAM_WIDTH;
-                if (self.vram_h == 0) self.vram_h = VRAM_HEIGHT;
-
+                self.setVramTransferSize(value);
                 self.gp0_mode = 0;
                 return;
             },
@@ -1538,6 +1517,31 @@ pub const Gpu = struct {
         self.clearGp0DrawSemiTransparent();
         self.gp0_vram_copy_active = true;
         self.gp0_vram_copy_index = 0;
+    }
+
+    fn setVramTransferPos(self: *Gpu, word: u32) void {
+        self.vram_x = @intCast(word & 0xFFFF);
+        self.vram_y = @intCast((word >> 16) & 0xFFFF);
+    }
+
+    fn setVramTransferSize(self: *Gpu, word: u32) void {
+        self.vram_w = @intCast(word & 0xFFFF);
+        self.vram_h = @intCast((word >> 16) & 0xFFFF);
+
+        if (self.vram_w == 0) self.vram_w = VRAM_WIDTH;
+        if (self.vram_h == 0) self.vram_h = VRAM_HEIGHT;
+    }
+
+    fn startCpuToVramTransferData(self: *Gpu) void {
+        const pixels: u32 = @as(u32, self.vram_w) * @as(u32, self.vram_h);
+
+        self.gp0_words_remaining = (pixels + 1) / 2;
+        self.image_x = self.vram_x;
+        self.image_y = self.vram_y;
+        self.image_w = self.vram_w;
+        self.image_h = self.vram_h;
+        self.image_index = 0;
+        self.gp0_mode = 3;
     }
 
     fn startLine(self: *Gpu, cmd: u8, value: u32) void {
