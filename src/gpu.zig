@@ -1579,6 +1579,25 @@ pub const Gpu = struct {
         };
     }
 
+    fn resetGp1(self: *Gpu) void {
+        self.status = 0x1C00_0000;
+        self.clearGp0CommandMode();
+        self.dma_direction = 0;
+        self.display_disabled = true;
+    }
+
+    fn setDisplayDisabled(self: *Gpu, param: u32) void {
+        self.display_disabled = (param & 1) != 0;
+    }
+
+    fn setDmaDirection(self: *Gpu, param: u32) void {
+        self.dma_direction = param & 0x3;
+    }
+
+    fn setDisplayMode(self: *Gpu, param: u32) void {
+        self.display_mode = param;
+    }
+
     fn setVramTransferSize(self: *Gpu, word: u32) void {
         self.vram_w = @intCast(word & 0xFFFF);
         self.vram_h = @intCast((word >> 16) & 0xFFFF);
@@ -2014,10 +2033,7 @@ pub const Gpu = struct {
 
         switch (cmd) {
             0x00 => {
-                self.status = 0x1C00_0000;
-                self.clearGp0CommandMode();
-                self.dma_direction = 0;
-                self.display_disabled = true;
+                self.resetGp1();
             },
             0x01 => {
                 self.clearGp0CommandMode();
@@ -2026,10 +2042,10 @@ pub const Gpu = struct {
                 self.status &= ~(@as(u32, 1) << 24);
             },
             0x03 => {
-                self.display_disabled = (param & 1) != 0;
+                self.setDisplayDisabled(param);
             },
             0x04 => {
-                self.dma_direction = param & 0x3;
+                self.setDmaDirection(param);
             },
             0x05 => {
                 self.setDisplayStart(param);
@@ -2041,7 +2057,7 @@ pub const Gpu = struct {
                 self.setDisplayVerticalRange(param);
             },
             0x08 => {
-                self.display_mode = param;
+                self.setDisplayMode(param);
             },
             0x10 => {
                 self.setGpuInfoResponse(param);
