@@ -932,11 +932,10 @@ pub const Gpu = struct {
                 self.startFixedTexturedRect(cmd, value, 1, 1);
             },
             0xE1 => {
-                self.clearGp0DrawSemiTransparent();
-                self.draw_mode = value & 0x00FF_FFFF;
+                self.setDrawMode(value);
             },
             0xE2 => {
-                self.texture_window = value & 0x00FF_FFFF;
+                self.setTextureWindow(value);
             },
             0xE3 => {
                 self.setDrawAreaTopLeft(value);
@@ -948,9 +947,7 @@ pub const Gpu = struct {
                 self.setDrawOffset(value);
             },
             0xE6 => {
-                self.clearGp0DrawSemiTransparent();
-                self.mask_set_on_draw = (value & 1) != 0;
-                self.mask_check_before_draw = (value & 2) != 0;
+                self.setMaskBitSetting(value);
             },
             0xA0 => {
                 self.clearGp0DrawSemiTransparent();
@@ -1463,6 +1460,21 @@ pub const Gpu = struct {
     fn clearGp0CommandMode(self: *Gpu) void {
         self.gp0_mode = 0;
         self.gp0_words_remaining = 0;
+    }
+
+    fn setDrawMode(self: *Gpu, value: u32) void {
+        self.clearGp0DrawSemiTransparent();
+        self.draw_mode = value & 0x00FF_FFFF;
+    }
+
+    fn setTextureWindow(self: *Gpu, value: u32) void {
+        self.texture_window = value & 0x00FF_FFFF;
+    }
+
+    fn setMaskBitSetting(self: *Gpu, value: u32) void {
+        self.clearGp0DrawSemiTransparent();
+        self.mask_set_on_draw = (value & 1) != 0;
+        self.mask_check_before_draw = (value & 2) != 0;
     }
 
     fn startFixedTexturedRect(self: *Gpu, cmd: u8, value: u32, w: u32, h: u32) void {
