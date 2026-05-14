@@ -5,6 +5,12 @@ pub const Gpu = struct {
     pub const GP0: u32 = 0x1F80_1810;
     pub const GP1: u32 = 0x1F80_1814;
 
+    const VRAM_WIDTH = 1024;
+    const VRAM_HEIGHT = 512;
+    const VRAM_MAX_X = VRAM_WIDTH - 1;
+    const VRAM_MAX_Y = VRAM_HEIGHT - 1;
+    const VRAM_PIXELS = VRAM_WIDTH * VRAM_HEIGHT;
+
     unsupported_gp0_log_count: u32 = 0,
 
     status: u32 = 0x1C00_0000,
@@ -63,7 +69,7 @@ pub const Gpu = struct {
     gp0_shaded_quad_index: u8 = 0,
     gp0_shaded_quad_active: bool = false,
 
-    vram: [1024 * 512]u16 = [_]u16{0} ** (1024 * 512),
+    vram: [VRAM_PIXELS]u16 = [_]u16{0} ** VRAM_PIXELS,
 
     vram_x: u16 = 0,
     vram_y: u16 = 0,
@@ -144,8 +150,8 @@ pub const Gpu = struct {
 
     draw_area_left: i32 = 0,
     draw_area_top: i32 = 0,
-    draw_area_right: i32 = 1023,
-    draw_area_bottom: i32 = 511,
+    draw_area_right: i32 = VRAM_MAX_X,
+    draw_area_bottom: i32 = VRAM_MAX_Y,
     draw_offset_x: i32 = 0,
     draw_offset_y: i32 = 0,
 
@@ -247,35 +253,35 @@ pub const Gpu = struct {
     fn sampleTexture4BitClut(self: *const Gpu, tex_base_x: u32, tex_base_y: u32, clut_x: u32, clut_y: u32, u: u32, v: u32) u16 {
         const tex_x = tex_base_x + (u / 4);
         const tex_y = tex_base_y + v;
-        if (tex_x >= 1024 or tex_y >= 512) return 0;
-        if (clut_x >= 1024 or clut_y >= 512) return 0;
+        if (tex_x >= VRAM_WIDTH or tex_y >= VRAM_HEIGHT) return 0;
+        if (clut_x >= VRAM_WIDTH or clut_y >= VRAM_HEIGHT) return 0;
 
-        const tex_word = self.vram[@intCast(tex_y * 1024 + tex_x)];
+        const tex_word = self.vram[@intCast(tex_y * VRAM_WIDTH + tex_x)];
         const shift: u4 = @intCast((u & 3) * 4);
         const index: u32 = (tex_word >> shift) & 0xF;
 
-        return self.vram[@intCast(clut_y * 1024 + clut_x + index)];
+        return self.vram[@intCast(clut_y * VRAM_WIDTH + clut_x + index)];
     }
 
     fn sampleTexture8BitClut(self: *const Gpu, tex_base_x: u32, tex_base_y: u32, clut_x: u32, clut_y: u32, u: u32, v: u32) u16 {
         const tex_x = tex_base_x + (u / 2);
         const tex_y = tex_base_y + v;
-        if (tex_x >= 1024 or tex_y >= 512) return 0;
-        if (clut_x >= 1024 or clut_y >= 512) return 0;
+        if (tex_x >= VRAM_WIDTH or tex_y >= VRAM_HEIGHT) return 0;
+        if (clut_x >= VRAM_WIDTH or clut_y >= VRAM_HEIGHT) return 0;
 
-        const tex_word = self.vram[@intCast(tex_y * 1024 + tex_x)];
+        const tex_word = self.vram[@intCast(tex_y * VRAM_WIDTH + tex_x)];
         const shift: u4 = if ((u & 1) == 0) 0 else 8;
         const index: u32 = (tex_word >> shift) & 0xFF;
 
-        return self.vram[@intCast(clut_y * 1024 + clut_x + index)];
+        return self.vram[@intCast(clut_y * VRAM_WIDTH + clut_x + index)];
     }
 
     fn sampleTexture15Bit(self: *const Gpu, tex_base_x: u32, tex_base_y: u32, u: u32, v: u32) u16 {
         const tex_x = tex_base_x + u;
         const tex_y = tex_base_y + v;
-        if (tex_x >= 1024 or tex_y >= 512) return 0;
+        if (tex_x >= VRAM_WIDTH or tex_y >= VRAM_HEIGHT) return 0;
 
-        return self.vram[@intCast(tex_y * 1024 + tex_x)];
+        return self.vram[@intCast(tex_y * VRAM_WIDTH + tex_x)];
     }
 
     fn sampleTextureMode(
@@ -830,8 +836,8 @@ pub const Gpu = struct {
                 self.vram_w = @intCast(value & 0xFFFF);
                 self.vram_h = @intCast((value >> 16) & 0xFFFF);
 
-                if (self.vram_w == 0) self.vram_w = 1024;
-                if (self.vram_h == 0) self.vram_h = 512;
+                if (self.vram_w == 0) self.vram_w = VRAM_WIDTH;
+                if (self.vram_h == 0) self.vram_h = VRAM_HEIGHT;
 
                 const pixels: u32 = @as(u32, self.vram_w) * @as(u32, self.vram_h);
 
@@ -862,8 +868,8 @@ pub const Gpu = struct {
                 self.vram_w = @intCast(value & 0xFFFF);
                 self.vram_h = @intCast((value >> 16) & 0xFFFF);
 
-                if (self.vram_w == 0) self.vram_w = 1024;
-                if (self.vram_h == 0) self.vram_h = 512;
+                if (self.vram_w == 0) self.vram_w = VRAM_WIDTH;
+                if (self.vram_h == 0) self.vram_h = VRAM_HEIGHT;
 
                 self.gp0_mode = 0;
                 return;
@@ -1069,8 +1075,8 @@ pub const Gpu = struct {
         const x = @as(u32, self.image_x) + px;
         const y = @as(u32, self.image_y) + py;
 
-        if (x < 1024 and y < 512) {
-            self.vram[@intCast(y * 1024 + x)] = pixel;
+        if (x < VRAM_WIDTH and y < VRAM_HEIGHT) {
+            self.vram[@intCast(y * VRAM_WIDTH + x)] = pixel;
         }
 
         self.image_index += 1;
@@ -1085,8 +1091,8 @@ pub const Gpu = struct {
         var w: u32 = @intCast(size_word & 0xFFFF);
         var h: u32 = @intCast((size_word >> 16) & 0xFFFF);
 
-        if (w == 0) w = 1024;
-        if (h == 0) h = 512;
+        if (w == 0) w = VRAM_WIDTH;
+        if (h == 0) h = VRAM_HEIGHT;
 
         var yy: u32 = 0;
         while (yy < h) : (yy += 1) {
@@ -1097,25 +1103,25 @@ pub const Gpu = struct {
                 const dx = dst_x + xx;
                 const dy = dst_y + yy;
 
-                if (sx >= 1024 or sy >= 512) continue;
-                if (dx >= 1024 or dy >= 512) continue;
+                if (sx >= VRAM_WIDTH or sy >= VRAM_HEIGHT) continue;
+                if (dx >= VRAM_WIDTH or dy >= VRAM_HEIGHT) continue;
 
-                const px = self.vram[@intCast(sy * 1024 + sx)];
-                self.vram[@intCast(dy * 1024 + dx)] = px;
+                const px = self.vram[@intCast(sy * VRAM_WIDTH + sx)];
+                self.vram[@intCast(dy * VRAM_WIDTH + dx)] = px;
             }
         }
     }
 
     fn putPixel(self: *Gpu, x: i32, y: i32, color: u16) void {
         if (x < 0 or y < 0) return;
-        if (x > 1023 or y > 511) return;
+        if (x > VRAM_MAX_X or y > VRAM_MAX_Y) return;
         if (x < self.draw_area_left or y < self.draw_area_top) return;
         if (x > self.draw_area_right or y > self.draw_area_bottom) return;
 
         const ux: u32 = @intCast(x);
         const uy: u32 = @intCast(y);
 
-        const index: usize = @intCast(uy * 1024 + ux);
+        const index: usize = @intCast(uy * VRAM_WIDTH + ux);
 
         if (self.mask_check_before_draw and (self.vram[index] & 0x8000) != 0) {
             return;
@@ -1434,12 +1440,12 @@ pub const Gpu = struct {
         if (y2 < min_y) min_y = y2;
         if (y2 > max_y) max_y = y2;
 
-        if (max_x < 0 or max_y < 0 or min_x >= 1024 or min_y >= 512) return null;
+        if (max_x < 0 or max_y < 0 or min_x >= VRAM_WIDTH or min_y >= VRAM_HEIGHT) return null;
 
         if (min_x < 0) min_x = 0;
         if (min_y < 0) min_y = 0;
-        if (max_x > 1023) max_x = 1023;
-        if (max_y > 511) max_y = 511;
+        if (max_x > VRAM_MAX_X) max_x = VRAM_MAX_X;
+        if (max_y > VRAM_MAX_Y) max_y = VRAM_MAX_Y;
 
         if (min_x < self.draw_area_left) min_x = self.draw_area_left;
         if (min_y < self.draw_area_top) min_y = self.draw_area_top;
