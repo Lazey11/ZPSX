@@ -1460,6 +1460,11 @@ pub const Gpu = struct {
         self.gp0_draw_semi_transparent = false;
     }
 
+    fn clearGp0CommandMode(self: *Gpu) void {
+        self.gp0_mode = 0;
+        self.gp0_words_remaining = 0;
+    }
+
     fn startFixedTexturedRect(self: *Gpu, cmd: u8, value: u32, w: u32, h: u32) void {
         self.setGp0DrawSemiTransparentFromCommand(cmd);
         self.gp0_textured_rect_color = rgb24ToRgb555(value);
@@ -1998,14 +2003,12 @@ pub const Gpu = struct {
         switch (cmd) {
             0x00 => {
                 self.status = 0x1C00_0000;
-                self.gp0_mode = 0;
-                self.gp0_words_remaining = 0;
+                self.clearGp0CommandMode();
                 self.dma_direction = 0;
                 self.display_disabled = true;
             },
             0x01 => {
-                self.gp0_mode = 0;
-                self.gp0_words_remaining = 0;
+                self.clearGp0CommandMode();
             },
             0x02 => {
                 self.status &= ~(@as(u32, 1) << 24);
