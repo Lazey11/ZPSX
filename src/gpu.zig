@@ -361,8 +361,33 @@ pub const Gpu = struct {
         const tpage = (uv1_word >> 16) & FIELD_16_MASK;
         const clut = uv0_word;
 
-        self.drawTexturedTriangleWithClutAndTpage(p0.x, p0.y, uv0_word, p1.x, p1.y, uv1_word, p2.x, p2.y, uv2_word, clut, tpage);
-        self.drawTexturedTriangleWithClutAndTpage(p1.x, p1.y, uv1_word, p2.x, p2.y, uv2_word, p3.x, p3.y, uv3_word, clut, tpage);
+        self.drawTexturedTriangleWithClutAndTpage(
+            p0.x,
+            p0.y,
+            uv0_word,
+            p1.x,
+            p1.y,
+            uv1_word,
+            p2.x,
+            p2.y,
+            uv2_word,
+            clut,
+            tpage,
+        );
+
+        self.drawTexturedTriangleWithClutAndTpage(
+            p1.x,
+            p1.y,
+            uv1_word,
+            p2.x,
+            p2.y,
+            uv2_word,
+            p3.x,
+            p3.y,
+            uv3_word,
+            clut,
+            tpage,
+        );
     }
 
     fn drawFilledRect(self: *Gpu, x: i32, y: i32, w: u32, h: u32, color: u16) void {
@@ -2003,7 +2028,13 @@ pub const Gpu = struct {
         const bounds = self.clippedTriangleBounds(x0, y0, x1, y1, x2, y2) orelse return;
         const edges = triangleEdges(x0, y0, x1, y1, x2, y2) orelse return;
 
-        const tex = triangleTextureSetupWithClutAndTpage(uv0_word, uv1_word, uv2_word, clut_word, tpage);
+        const tex = triangleTextureSetupWithClutAndTpage(
+            uv0_word,
+            uv1_word,
+            uv2_word,
+            clut_word,
+            tpage,
+        );
 
         var y: i32 = bounds.min_y;
         while (y <= bounds.max_y) : (y += 1) {
@@ -2109,7 +2140,18 @@ pub const Gpu = struct {
         uv2_word: u32,
     ) void {
         const tpage = (uv1_word >> 16) & FIELD_16_MASK;
-        self.drawTexturedTriangleWithTpage(x0, y0, uv0_word, x1, y1, uv1_word, x2, y2, uv2_word, tpage);
+        self.drawTexturedTriangleWithTpage(
+            x0,
+            y0,
+            uv0_word,
+            x1,
+            y1,
+            uv1_word,
+            x2,
+            y2,
+            uv2_word,
+            tpage,
+        );
     }
 
     fn sampleTriangleTexture(
