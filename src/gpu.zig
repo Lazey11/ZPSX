@@ -358,8 +358,11 @@ pub const Gpu = struct {
         const p2 = self.offsetPoint(xy2_word);
         const p3 = self.offsetPoint(xy3_word);
 
-        self.drawTexturedTriangle(p0.x, p0.y, uv0_word, p1.x, p1.y, uv1_word, p2.x, p2.y, uv2_word);
-        self.drawTexturedTriangle(p1.x, p1.y, uv1_word, p2.x, p2.y, uv2_word, p3.x, p3.y, uv3_word);
+        const tpage = (uv1_word >> 16) & FIELD_16_MASK;
+        const clut = uv0_word;
+
+        self.drawTexturedTriangleWithClutAndTpage(p0.x, p0.y, uv0_word, p1.x, p1.y, uv1_word, p2.x, p2.y, uv2_word, clut, tpage);
+        self.drawTexturedTriangleWithClutAndTpage(p1.x, p1.y, uv1_word, p2.x, p2.y, uv2_word, p3.x, p3.y, uv3_word, clut, tpage);
     }
 
     fn drawFilledRect(self: *Gpu, x: i32, y: i32, w: u32, h: u32, color: u16) void {
@@ -1312,6 +1315,28 @@ pub const Gpu = struct {
         tex_mode: u32,
     };
 
+    fn triangleTextureSetupWithClutAndTpage(
+        uv0_word: u32,
+        uv1_word: u32,
+        uv2_word: u32,
+        clut_word: u32,
+        tpage: u32,
+    ) TriangleTextureSetup {
+        return .{
+            .u0 = uvU(uv0_word),
+            .v0 = uvV(uv0_word),
+            .u1 = uvU(uv1_word),
+            .v1 = uvV(uv1_word),
+            .u2 = uvU(uv2_word),
+            .v2 = uvV(uv2_word),
+            .clx = clutX(clut_word),
+            .cly = clutY(clut_word),
+            .tex_base_x = texturePageBaseX(tpage),
+            .tex_base_y = texturePageBaseY(tpage),
+            .tex_mode = textureMode(tpage),
+        };
+    }
+
     fn triangleTextureSetup(uv0_word: u32, uv1_word: u32, uv2_word: u32, tpage: u32) TriangleTextureSetup {
         return .{
             .u0 = uvU(uv0_word),
@@ -1957,6 +1982,42 @@ pub const Gpu = struct {
                     y,
                     mixRgb555(c0, c1, c2, weights.w0, weights.w1, weights.w2, edges.area2_abs),
                 );
+            }
+        }
+    }
+
+    fn drawTexturedTriangleWithClutAndTpage(
+        self: *Gpu,
+        x0: i32,
+        y0: i32,
+        uv0_word: u32,
+        x1: i32,
+        y1: i32,
+        uv1_word: u32,
+        x2: i32,
+        y2: i32,
+        uv2_word: u32,
+        clut_word: u32,
+        tpage: u32,
+    ) void {
+        const bounds = self.clippedTriangleBounds(x0, y0, x1, y1, x2, y2) orelse return;
+        const edges = triangleEdges(x0, y0, x1, y1, x2, y2) orelse return;
+
+        const tex = triangleTextureSetupWithClutAndTpage(uv0_word, uv1_word, uv2_word, clut_word, tpage);
+
+        var y: i32 = bounds.min_y;
+        while (y <= bounds.max_y) : (y += 1) {
+            var x: i32 = bounds.min_x;
+            while (x <= bounds.max_x) : (x += 1) {
+                const px2 = x * 2 + 1;
+                const py2 = y * 2 + 1;
+
+                const weights = triangleWeights(x0, y0, x1, y1, x2, y2, px2, py2, edges) orelse continue;
+
+                const tex_px = self.sampleTriangleTexture(tex, weights, edges.area2_abs);
+                if (tex_px == 0) continue;
+
+                self.putPixel(x, y, tex_px);
             }
         }
     }
