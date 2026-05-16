@@ -1075,17 +1075,22 @@ pub const Gpu = struct {
         var file_writer = file.writer(io, &.{});
         const writer = &file_writer.interface;
 
-        const horizontal_mode = self.display_mode & 0x03;
-        const width: u32 = switch (horizontal_mode) {
-            0 => 256,
-            1 => 320,
-            2 => 512,
-            3 => 640,
-            else => 320,
-        };
+        const h_range = if (self.display_h_end > self.display_h_start)
+            @as(u32, self.display_h_end - self.display_h_start)
+        else
+            @as(u32, 0);
 
-        const height: u32 = if ((self.display_mode & 0x20) != 0) 480 else 240;
-        const y_scale: u32 = if (height == 480) 2 else 1;
+        const width: u32 = if (h_range > 0)
+            h_range / 4
+        else
+            640;
+
+        const v_range = if (self.display_v_end > self.display_v_start)
+            @as(u32, self.display_v_end - self.display_v_start + 1)
+        else
+            @as(u32, 240);
+
+        const height: u32 = if (v_range > 0) v_range else 240;
 
         try writer.print("P6\n{} {}\n255\n", .{ width, height });
 
@@ -1094,7 +1099,7 @@ pub const Gpu = struct {
             var x: u32 = 0;
             while (x < width) : (x += 1) {
                 const src_x = @as(u32, self.display_x) + x;
-                const src_y = @as(u32, self.display_y) + (y / y_scale);
+                const src_y = @as(u32, self.display_y) + y;
 
                 var pixel: u16 = 0;
                 if (src_x < VRAM_WIDTH and src_y < VRAM_HEIGHT) {
