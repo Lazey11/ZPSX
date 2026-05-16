@@ -1071,6 +1071,51 @@ pub const Gpu = struct {
         try writer.flush();
     }
 
+    pub fn writeDisplayPpm(self: *const Gpu, io: std.Io, file: std.Io.File) !void {
+        var file_writer = file.writer(io, &.{});
+        const writer = &file_writer.interface;
+
+        const horizontal_mode = self.display_mode & 0x03;
+        const width: u32 = switch (horizontal_mode) {
+            0 => 256,
+            1 => 320,
+            2 => 512,
+            3 => 640,
+            else => 320,
+        };
+
+        const height: u32 = if ((self.display_mode & 0x20) != 0) 480 else 240;
+        const y_scale: u32 = if (height == 480) 2 else 1;
+
+        try writer.print("P6\n{} {}\n255\n", .{ width, height });
+
+        var y: u32 = 0;
+        while (y < height) : (y += 1) {
+            var x: u32 = 0;
+            while (x < width) : (x += 1) {
+                const src_x = @as(u32, self.display_x) + x;
+                const src_y = @as(u32, self.display_y) + (y / y_scale);
+
+                var pixel: u16 = 0;
+                if (src_x < VRAM_WIDTH and src_y < VRAM_HEIGHT) {
+                    pixel = self.vram[@intCast(src_y * VRAM_WIDTH + src_x)];
+                }
+
+                const r5 = pixel & 0x1F;
+                const g5 = (pixel >> 5) & 0x1F;
+                const b5 = (pixel >> 10) & 0x1F;
+
+                const r8: u8 = @intCast((@as(u32, r5) * 255) / 31);
+                const g8: u8 = @intCast((@as(u32, g5) * 255) / 31);
+                const b8: u8 = @intCast((@as(u32, b5) * 255) / 31);
+
+                try writer.writeAll(&.{ r8, g8, b8 });
+            }
+        }
+
+        try writer.flush();
+    }
+
     fn writeImageData(self: *Gpu, value: u32) void {
         const lo: u16 = @intCast(wordLo16(value));
         const hi: u16 = @intCast(wordHi16(value));

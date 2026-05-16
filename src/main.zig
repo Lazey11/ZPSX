@@ -44,10 +44,25 @@ fn parseDumpVramPath(args: []const []const u8) !?[]const u8 {
     return null;
 }
 
+fn parseDumpDisplayPath(args: []const []const u8) !?[]const u8 {
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        if (std.mem.eql(u8, args[i], "--dump-display")) {
+            if (i + 1 >= args.len) return error.MissingDumpDisplayPath;
+            return args[i + 1];
+        }
+    }
+
+    return null;
+}
+
 fn programPath(args: []const []const u8) ?[]const u8 {
     var i: usize = 2;
     while (i < args.len) : (i += 1) {
-        if (std.mem.eql(u8, args[i], "--frames") or std.mem.eql(u8, args[i], "--dump-vram")) {
+        if (std.mem.eql(u8, args[i], "--frames") or
+            std.mem.eql(u8, args[i], "--dump-vram") or
+            std.mem.eql(u8, args[i], "--dump-display"))
+        {
             i += 1;
             continue;
         }
@@ -75,6 +90,7 @@ pub fn main(init: std.process.Init) !void {
     const frame_limit = try parseFrames(args);
     const print_gpu_crc = parseGpuCrc(args);
     const dump_vram_path = try parseDumpVramPath(args);
+    const dump_display_path = try parseDumpDisplayPath(args);
     const program_path = programPath(args);
     var sdl = display.SDL{};
     var config: display.displayConfig = undefined;
@@ -180,5 +196,16 @@ pub fn main(init: std.process.Init) !void {
         defer file.close(init.io);
 
         try bus.gpu.writeVramPpm(init.io, file);
+    }
+
+    if (dump_display_path) |path| {
+        if (std.fs.path.dirname(path)) |dir| {
+            try std.Io.Dir.cwd().createDirPath(init.io, dir);
+        }
+
+        const file = try std.Io.Dir.cwd().createFile(init.io, path, .{});
+        defer file.close(init.io);
+
+        try bus.gpu.writeDisplayPpm(init.io, file);
     }
 }
