@@ -47,13 +47,13 @@ pub const Cdrom = struct {
     fn readStatus(self: *const Cdrom) u8 {
         var value: u8 = self.index & 0x03;
 
-        // Bit 3: parameter FIFO empty.
-        if (self.parameter_index >= self.parameter_len) {
+        // Bit 3: parameter FIFO not full.
+        if (self.parameter_len < self.parameter_fifo.len) {
             value |= 1 << 3;
         }
 
-        // Bit 4: parameter FIFO not full.
-        if (self.parameter_len < self.parameter_fifo.len) {
+        // Bit 4: parameter FIFO empty.
+        if (self.parameter_index >= self.parameter_len) {
             value |= 1 << 4;
         }
 
