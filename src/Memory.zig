@@ -376,12 +376,18 @@ pub const Bus = struct {
         target: u16,
         irq_bit: u5,
     ) void {
-        counter.* +%= 1;
+        const old_counter = counter.*;
+        const new_counter = old_counter +% 1;
+        counter.* = new_counter;
 
         const reset_on_target = (mode & (1 << 3)) != 0;
         const irq_on_target = (mode & (1 << 4)) != 0;
+        const irq_on_overflow = (mode & (1 << 5)) != 0;
 
-        if (counter.* == target) {
+        const hit_target = new_counter == target;
+        const overflowed = new_counter == 0 and old_counter == std.math.maxInt(u16);
+
+        if (hit_target) {
             if (irq_on_target) {
                 self.interrupt_status |= @as(u32, 1) << irq_bit;
                 self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
@@ -392,16 +398,11 @@ pub const Bus = struct {
             }
         }
 
-        if (counter.* == 0) {
-            const irq_on_overflow = (mode & (1 << 5)) != 0;
-
-            if (irq_on_overflow) {
-                self.interrupt_status |= @as(u32, 1) << irq_bit;
-                self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
-            }
+        if (overflowed and irq_on_overflow) {
+            self.interrupt_status |= @as(u32, 1) << irq_bit;
+            self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
         }
     }
-
     pub fn tick(self: *Bus) void {
         self.tick_count +%= 1;
 
