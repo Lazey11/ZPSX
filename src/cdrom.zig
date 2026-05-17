@@ -59,6 +59,10 @@ pub const Cdrom = struct {
         }
     }
 
+    pub fn irqPending(self: *const Cdrom) bool {
+        return (self.interrupt_flag & self.interrupt_enable & 0x1F) != 0;
+    }
+
     fn clearResponse(self: *Cdrom) void {
         self.response_len = 0;
         self.response_index = 0;

@@ -328,6 +328,19 @@ pub const Bus = struct {
             self.ramWrite32Physical(vblank_entry, state | 0x0000_1000);
         }
     }
+
+    fn updateCdromIrqLine(self: *Bus) void {
+        const I_STAT_CDROM: u32 = 1 << 2;
+
+        if (self.cdrom.irqPending()) {
+            self.interrupt_status |= I_STAT_CDROM;
+        } else {
+            self.interrupt_status &= ~I_STAT_CDROM;
+        }
+
+        self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
+    }
+
     fn tickRootCounters(self: *Bus) void {
         if (self.shouldTickRootCounter0()) {
             self.tickRootCounter(&self.root_counter0, self.root_mode0, self.root_target0, 4);
@@ -548,7 +561,9 @@ pub const Bus = struct {
             }
             if (physical >= Cdrom.Start and physical <= Cdrom.End) {
                 const offset: u2 = @intCast(physical - Cdrom.Start);
-                return self.cdrom.readRegister(offset);
+                const value = self.cdrom.readRegister(offset);
+                self.updateCdromIrqLine();
+                return value;
             }
 
             if (physical == JOY_DATA) {
@@ -983,6 +998,7 @@ pub const Bus = struct {
             if (physical >= Cdrom.Start and physical <= Cdrom.End) {
                 const offset: u2 = @intCast(physical - Cdrom.Start);
                 self.cdrom.writeRegister(offset, value);
+                self.updateCdromIrqLine();
                 return;
             }
 
