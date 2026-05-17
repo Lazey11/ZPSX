@@ -180,6 +180,7 @@ pub const Cpu = struct {
     pub fn deinit(self: *@This()) void {
         _ = self;
     }
+
     fn traceBiosCopyProgress(self: *const @This()) void {
         if (!debug_f.enable_bios_copy_progress) return;
 
@@ -345,7 +346,15 @@ pub const Cpu = struct {
         self.pc = self.pc_next;
         self.pc_next +%= 4;
 
+        // If this instruction is a taken branch/jump, execute() will replace
+        // pc_next with the branch target while self.pc still points at the
+        // delay-slot instruction. Do not service IRQs in that half-state,
+        // or the exception path will clobber the pending branch target.
+        const pc_next_before_execute = self.pc_next;
+
         self.execute(instr);
+
+        const scheduled_branch = self.pc_next != pc_next_before_execute;
 
         if (self.load_delay) |ld| {
             if (ld.reg != 0) {
@@ -357,7 +366,11 @@ pub const Cpu = struct {
         self.load_delay_next = null;
 
         self.bus.tick();
-        self.checkInterrupts();
+
+        if (!scheduled_branch) {
+            self.checkInterrupts();
+        }
+
         self.watchStatus("after-step");
 
         self.regs[0] = 0;
