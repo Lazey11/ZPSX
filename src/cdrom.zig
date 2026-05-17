@@ -76,12 +76,22 @@ pub const Cdrom = struct {
                     self.interrupt_enable = value;
                 }
             },
-            3 => self.interrupt_flag &= ~value,
+            3 => self.ackInterrupt(value),
         }
     }
 
     pub fn irqPending(self: *const Cdrom) bool {
         return (self.interrupt_flag & self.interrupt_enable & 0x1F) != 0;
+    }
+
+    fn ackInterrupt(self: *Cdrom, value: u8) void {
+        // Bit 6 resets the parameter FIFO.
+        if ((value & 0x40) != 0) {
+            self.clearParameters();
+        }
+
+        // Low interrupt bits are acknowledged by writing 1s.
+        self.interrupt_flag &= ~(value & 0x1F);
     }
 
     fn clearResponse(self: *Cdrom) void {
