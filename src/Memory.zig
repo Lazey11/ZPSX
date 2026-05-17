@@ -350,7 +350,9 @@ pub const Bus = struct {
             self.tickRootCounter(&self.root_counter1, self.root_mode1, self.root_target1, 5);
         }
 
-        self.tickRootCounter(&self.root_counter2, self.root_mode2, self.root_target2, 6);
+        if (self.shouldTickRootCounter2()) {
+            self.tickRootCounter(&self.root_counter2, self.root_mode2, self.root_target2, 6);
+        }
     }
 
     fn shouldTickRootCounter0(self: *const Bus) bool {
@@ -365,6 +367,14 @@ pub const Bus = struct {
         const use_hblank_clock = (self.root_mode1 & (1 << 8)) != 0;
         if (use_hblank_clock) {
             return self.hblank_pulse;
+        }
+        return true;
+    }
+
+    fn shouldTickRootCounter2(self: *const Bus) bool {
+        const use_system_clock_div8 = (self.root_mode2 & (1 << 9) != 0);
+        if (use_system_clock_div8) {
+            return (self.tick_count & 7) == 0;
         }
         return true;
     }
