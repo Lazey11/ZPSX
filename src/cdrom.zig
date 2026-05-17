@@ -14,6 +14,10 @@ pub const Cdrom = struct {
     parameter_len: u8 = 0,
     parameter_index: u8 = 0,
 
+    loc_minute: u8 = 0,
+    loc_second: u8 = 0,
+    loc_sector: u8 = 0,
+
     allocator: std.mem.Allocator,
     data: []u8 = &[_]u8{},
 
@@ -91,34 +95,47 @@ pub const Cdrom = struct {
 
     fn command(self: *Cdrom, value: u8) void {
         self.clearResponse();
-        self.clearParameters();
 
         switch (value) {
             0x01 => {
+                self.clearParameters();
                 self.pushResponse(0x02);
                 self.interrupt_flag |= 0x03;
             },
             0x02 => {
-                _ = self.popParameter();
-                _ = self.popParameter();
-                _ = self.popParameter();
+                self.loc_minute = self.popParameter();
+                self.loc_second = self.popParameter();
+                self.loc_sector = self.popParameter();
+
+                if (debug_f.enable_cdrom_trace) {
+                    std.debug.print(
+                        "CDROM Setloc {:0>2}:{:0>2}:{:0>2}\n",
+                        .{ self.loc_minute, self.loc_second, self.loc_sector },
+                    );
+                }
+
+                self.clearParameters();
 
                 self.pushResponse(0x02);
                 self.interrupt_flag |= 0x03;
             },
             0x06 => {
+                self.clearParameters();
                 self.pushResponse(0x02);
                 self.interrupt_flag |= 0x03;
             },
             0x09 => {
+                self.clearParameters();
                 self.pushResponse(0x02);
                 self.interrupt_flag |= 0x03;
             },
             0x0A => {
+                self.clearParameters();
                 self.pushResponse(0x02);
                 self.interrupt_flag |= 0x03;
             },
             0x19 => {
+                self.clearParameters();
                 self.pushResponse(0x94);
                 self.pushResponse(0x09);
                 self.pushResponse(0x19);
@@ -126,6 +143,7 @@ pub const Cdrom = struct {
                 self.interrupt_flag |= 0x03;
             },
             0x1A => {
+                self.clearParameters();
                 self.pushResponse(0x02);
                 self.pushResponse(0x00);
                 self.pushResponse(0x20);
@@ -137,6 +155,7 @@ pub const Cdrom = struct {
                 self.interrupt_flag |= 0x03;
             },
             else => {
+                self.clearParameters();
                 if (debug_f.enable_cdrom_trace) {
                     std.debug.print(
                         "CDROM unknown command=0x{X:0>2} params_len={}\n",
