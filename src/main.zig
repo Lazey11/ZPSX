@@ -56,12 +56,25 @@ fn parseDumpDisplayPath(args: []const []const u8) !?[]const u8 {
     return null;
 }
 
+fn parseDiscPath(args: []const []const u8) !?[]const u8 {
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        if (std.mem.eql(u8, args[i], "--disc")) {
+            if (i + 1 >= args.len) return error.MissingDiscPath;
+            return args[i + 1];
+        }
+    }
+
+    return null;
+}
+
 fn programPath(args: []const []const u8) ?[]const u8 {
     var i: usize = 2;
     while (i < args.len) : (i += 1) {
         if (std.mem.eql(u8, args[i], "--frames") or
             std.mem.eql(u8, args[i], "--dump-vram") or
-            std.mem.eql(u8, args[i], "--dump-display"))
+            std.mem.eql(u8, args[i], "--dump-display") or
+            std.mem.eql(u8, args[i], "--disc"))
         {
             i += 1;
             continue;
@@ -82,7 +95,7 @@ pub fn main(init: std.process.Init) !void {
 
     const args = try init.minimal.args.toSlice(allocator);
     if (args.len < 2) {
-        std.debug.print("usage: ZPSX <bios.bin> [program.exe] [--headless] [--frames N] [--gpu-crc] [--dump-vram out.ppm]\n", .{});
+        std.debug.print("usage: ZPSX <bios.bin> [program.exe] [--disc disc.bin] [--headless] [--frames N] [--gpu-crc] [--dump-vram out.ppm] [--dump-display out.ppm]\n", .{});
         return;
     }
 
@@ -91,6 +104,7 @@ pub fn main(init: std.process.Init) !void {
     const print_gpu_crc = parseGpuCrc(args);
     const dump_vram_path = try parseDumpVramPath(args);
     const dump_display_path = try parseDumpDisplayPath(args);
+    const disc_path = try parseDiscPath(args);
     const program_path = programPath(args);
     var sdl = display.SDL{};
     var config: display.displayConfig = undefined;
@@ -110,6 +124,10 @@ pub fn main(init: std.process.Init) !void {
     defer bus.deinit();
 
     try bus.loadBios(init.io, args[1]);
+
+    if (disc_path) |path| {
+        try bus.cdrom.loadBin(init.io, path);
+    }
 
     var cpu = cpu_f.Cpu.init(bus);
     defer cpu.deinit();
