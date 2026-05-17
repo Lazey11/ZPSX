@@ -72,6 +72,14 @@ pub const Bus = struct {
     root_counter1: u16 = 0,
     root_counter2: u16 = 0,
 
+    root_reached_target0: bool = false,
+    root_reached_target1: bool = false,
+    root_reached_target2: bool = false,
+
+    root_reached_overflow0: bool = false,
+    root_reached_overflow1: bool = false,
+    root_reached_overflow2: bool = false,
+
     root_mode0: u16 = 0,
     root_mode1: u16 = 0,
     root_mode2: u16 = 0,
@@ -268,20 +276,54 @@ pub const Bus = struct {
     fn readRootCounter16(self: *Bus, physical: u32) ?u16 {
         return switch (physical) {
             0x1F80_1100 => self.root_counter0,
-            0x1F80_1104 => self.root_mode0,
+            0x1F80_1104 => readRootMode(
+                self.root_mode0,
+                &self.root_reached_target0,
+                &self.root_reached_overflow0,
+            ),
             0x1F80_1108 => self.root_target0,
 
             0x1F80_1110 => self.root_counter1,
-            0x1F80_1114 => self.root_mode1,
+            0x1F80_1114 => readRootMode(
+                self.root_mode1,
+                &self.root_reached_target1,
+                &self.root_reached_overflow1,
+            ),
             0x1F80_1118 => self.root_target1,
 
             0x1F80_1120 => self.root_counter2,
-            0x1F80_1124 => self.root_mode2,
+            0x1F80_1124 => readRootMode(
+                self.root_mode2,
+                &self.root_reached_target2,
+                &self.root_reached_overflow2,
+            ),
             0x1F80_1128 => self.root_target2,
 
             else => null,
         };
     }
+
+    fn readRootMode(
+        mode: u16,
+        reached_target: *bool,
+        reached_overflow: *bool,
+    ) u16 {
+        var value = mode & ~@as(u16, (1 << 11) | (1 << 12));
+
+        if (reached_target.*) {
+            value |= 1 << 11;
+        }
+
+        if (reached_overflow.*) {
+            value |= 1 << 12;
+        }
+
+        reached_target.* = false;
+        reached_overflow.* = false;
+
+        return value;
+    }
+
     fn writeRootCounter16(self: *Bus, physical: u32, value: u16) bool {
         switch (physical) {
             0x1F80_1100 => self.root_counter0 = value,
@@ -343,15 +385,36 @@ pub const Bus = struct {
 
     fn tickRootCounters(self: *Bus) void {
         if (self.shouldTickRootCounter0()) {
-            self.tickRootCounter(&self.root_counter0, self.root_mode0, self.root_target0, 4);
+            self.tickRootCounter(
+                &self.root_counter0,
+                self.root_mode0,
+                self.root_target0,
+                4,
+                &self.root_reached_target0,
+                &self.root_reached_overflow0,
+            );
         }
 
         if (self.shouldTickRootCounter1()) {
-            self.tickRootCounter(&self.root_counter1, self.root_mode1, self.root_target1, 5);
+            self.tickRootCounter(
+                &self.root_counter1,
+                self.root_mode1,
+                self.root_target1,
+                5,
+                &self.root_reached_target1,
+                &self.root_reached_overflow1,
+            );
         }
 
         if (self.shouldTickRootCounter2()) {
-            self.tickRootCounter(&self.root_counter2, self.root_mode2, self.root_target2, 6);
+            self.tickRootCounter(
+                &self.root_counter2,
+                self.root_mode2,
+                self.root_target2,
+                6,
+                &self.root_reached_target2,
+                &self.root_reached_overflow2,
+            );
         }
     }
 
@@ -385,6 +448,8 @@ pub const Bus = struct {
         mode: u16,
         target: u16,
         irq_bit: u5,
+        reached_target: *bool,
+        reached_overflow: *bool,
     ) void {
         const old_counter = counter.*;
         const new_counter = old_counter +% 1;
@@ -398,6 +463,8 @@ pub const Bus = struct {
         const overflowed = new_counter == 0 and old_counter == std.math.maxInt(u16);
 
         if (hit_target) {
+            reached_target.* = true;
+
             if (irq_on_target) {
                 self.interrupt_status |= @as(u32, 1) << irq_bit;
                 self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
@@ -408,9 +475,13 @@ pub const Bus = struct {
             }
         }
 
-        if (overflowed and irq_on_overflow) {
-            self.interrupt_status |= @as(u32, 1) << irq_bit;
-            self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
+        if (overflowed) {
+            reached_overflow.* = true;
+
+            if (irq_on_overflow) {
+                self.interrupt_status |= @as(u32, 1) << irq_bit;
+                self.hwWrite32Raw(0x1F80_1070, self.interrupt_status);
+            }
         }
     }
     pub fn tick(self: *Bus) void {
