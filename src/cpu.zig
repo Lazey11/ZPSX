@@ -162,6 +162,10 @@ pub const Cpu = struct {
         r[12] = 0x0040_0000;
         break :blk r;
     },
+
+    cop2_data: [32]u32 = [_]u32{0} ** 32,
+    cop2_control: [32]u32 = [_]u32{0} ** 32,
+
     last_status_seen: u32 = 0xFFFF_FFFF,
     suppress_irq_once: bool = false,
 
@@ -440,6 +444,7 @@ pub const Cpu = struct {
             @intFromEnum(PrimaryOpcodes.SWR) => self.opSwr(instr),
 
             @intFromEnum(PrimaryOpcodes.COP0) => self.executeCop0(instr),
+            @intFromEnum(PrimaryOpcodes.COP2) => self.executeCop2(instr),
 
             else => debug_f.unhandledPrimary(instr),
         }
@@ -502,6 +507,43 @@ pub const Cpu = struct {
             0x00 => self.opMfc0(instr),
             0x04 => self.opMtc0(instr),
             else => debug_f.unhandledCop0(instr),
+        }
+    }
+
+    fn executeCop2(self: *@This(), instr: Instruction) void {
+        const rs = instr.rs();
+
+        switch (rs) {
+            // MFC2 rt, rd
+            0x00 => {
+                const rt: usize = @intCast(instr.rt());
+                const rd: usize = @intCast(instr.rd());
+                self.setRegDelayed(rt, self.cop2_data[rd]);
+            },
+
+            // CFC2 rt, rd
+            0x02 => {
+                const rt: usize = @intCast(instr.rt());
+                const rd: usize = @intCast(instr.rd());
+                self.setRegDelayed(rt, self.cop2_control[rd]);
+            },
+
+            // MTC2 rt, rd
+            0x04 => {
+                const rt: usize = @intCast(instr.rt());
+                const rd: usize = @intCast(instr.rd());
+                self.cop2_data[rd] = self.regs[rt];
+            },
+
+            // CTC2 rt, rd
+            0x06 => {
+                const rt: usize = @intCast(instr.rt());
+                const rd: usize = @intCast(instr.rd());
+                self.cop2_control[rd] = self.regs[rt];
+            },
+
+            // GTE command stub for now.
+            else => {},
         }
     }
 
