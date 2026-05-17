@@ -37,11 +37,32 @@ pub const Cdrom = struct {
 
     pub fn readRegister(self: *Cdrom, offset: u2) u8 {
         return switch (offset) {
-            0 => (self.status & 0xFC) | (self.index & 0x03),
+            0 => self.readStatus(),
             1 => self.popResponse(),
             2 => self.interrupt_enable,
             3 => self.interrupt_flag,
         };
+    }
+
+    fn readStatus(self: *const Cdrom) u8 {
+        var value: u8 = self.index & 0x03;
+
+        // Bit 3: parameter FIFO empty.
+        if (self.parameter_index >= self.parameter_len) {
+            value |= 1 << 3;
+        }
+
+        // Bit 4: parameter FIFO not full.
+        if (self.parameter_len < self.parameter_fifo.len) {
+            value |= 1 << 4;
+        }
+
+        // Bit 5: response FIFO not empty.
+        if (self.response_index < self.response_len) {
+            value |= 1 << 5;
+        }
+
+        return value;
     }
 
     pub fn writeRegister(self: *Cdrom, offset: u2, value: u8) void {
